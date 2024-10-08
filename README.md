@@ -2,7 +2,7 @@
 A companion repository for [Gradient Routing: Masking Gradients to Localize Computation in Neural Networks](https://arxiv.org/abs/2410.04332).
 
 
-### Repo structure
+## Repo structure
 * `factored_representations` is for shared functionality, although in practice, code for different subprojects is mostly siloed
     * `masklib.py` and `model_expansion.py` implement Expand, Route, Ablate for any [TransformerLens](https://transformerlensorg.github.io/TransformerLens/) model.
     * Has some tests
@@ -35,9 +35,20 @@ source /pdm-venvs/factored-representations-Dp430888-3.12/bin/activate
 `.vscode/settings.json` is configured to automatically format and lint the code with
 [Ruff](https://docs.astral.sh/ruff/) (using the extension) on save.
 
-### Tests
+## Tests
 
 Run the tests with:
 ```bash
 pdm run pytest
+```
+
+## Citation
+```
+@article{cloud2024gradient,
+	title={Gradient Routing: Masking Gradients to Localize Computation in Neural Networks},
+	url={https://arxiv.org/abs/2410.04332v1},
+	journal={arXiv.org},
+	author={Cloud, Alex and Goldman-Wetzler, Jacob and Wybitul, Evžen and Miller, Joseph and Turner, Alexander Matt},
+	year={2024},
+}
 ```
