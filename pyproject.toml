@@ -1,0 +1,98 @@
+[project]
+name = "factored-representations"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [{ name = "Anonymous", email = "anon@example.com" }]
+dependencies = [
+    "minigrid>=2.3.1",
+    "rich>=13.7.1",
+    "stable-baselines3>=2.3.2",
+    "tyro>=0.8.5",
+    "wandb>=0.17.4",
+    "moviepy>=1.0.3",
+    "pygame>=2.6.0",
+    "einops>=0.8.0",
+    "jaxtyping>=0.2.31",
+    "polars>=1.0.0",
+    "lets-plot>=4.3.3",
+    "ipykernel>=6.29.5",
+    "python-dotenv>=1.0.1",
+    "plotly>=5.22.0",
+    "matplotlib>=3.9.1",
+    "torch>=2.5.0.dev0",
+    #"torch>=2.4.0",
+    "torchvision>=0.18.1",
+    "pytest>=8.2.2",
+    "nvidia-ml-py3>=7.352.0",
+    "lm-eval @ git+https://github.com/g-w1/lm-evaluation-harness.git@c1ed3d8381ed2537e7031ecd9894aec7b601320f",
+    "pre-commit>=3.7.1",
+    "streamlit>=1.36.0",
+    "shiny>=1.0.0",
+    "pyright>=1.1.374",
+    "nbformat>=5.10.4",
+    "transformer-lens @ git+https://github.com/UFO-101/TransformerLens.git@a52bfac5489f6ce08cc6177bf388df66ee51e3f7",
+    "onnx>=1.16.2",
+    "gym3>=0.3.3",
+    "funcy>=2.0",
+    "circrl>=1.0.0",
+    "ipywidgets>=8.1.3",
+    "cairosvg>=2.7.1",
+    "tiktoken>=0.7.0",
+    "beautifulsoup4>=4.13.0b2",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+# TODO: Remove. Likely doesn't do anything, seems to be a poetry-specific setting
+packages = [{ include = "factored_representations" }]
+
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.dev-dependencies]
+dev = ["-e file:///${PROJECT_ROOT}/#egg=factored-representations"]
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.ruff]
+lint.ignore = ["F722", "F821", "F403", "F405", "E731"]
+exclude = ["*.ipynb", "**/wandb/**", "**/data**","**/figures**", "**/results**"]
+
+[tool.codespell]
+skip = ["projects/maze/*", "projects/nanoGPT-factrep/*"]
+
+[tool.pyright]
+include = ["projects/", "tests/", "factored_representations/"]
+reportMissingTypeStubs = false
+exclude = [
+    "projects/wmdp",
+    "projects/cifar100",
+    "projects/mnist",
+    "projects/harry_potter",
+    "projects/minigrid",
+    "projects/maze",
+    "projects/routed_layer",
+    "projects/mnist_vae",
+    "projects/tinystories/exploration.py",
+    "factored_representations/steering_tools.py", # this includes code for routed_layer which has lots of type errors; ignoring for now
+    "factored_representations/slgr.py",           # this code is very out of date
+    "projects/nanoGPT-factrep",
+    "**/wandb**",
+    "**/data**",
+    "**/figures**",
+    "**/results**",
+    "Interactive-*.interactive.py"
+
+]
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+
+[[tool.pdm.source]]
+name = "pytorch_source"
+url = "https://download.pytorch.org/whl/nightly/cu121"
+
+[tool.pdm.resolution]
+allow-prereleases = true # we need this if we want to use torch nightly; otherwise it complains about a failure

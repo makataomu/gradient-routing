@@ -1,0 +1,17 @@
+**/__pycache__/*
+*.onnx
+*.pt
+*.pth
+wandb/
+**/wandb/
+.pdm-python
+*.csv
+*.pkl
+*.jsonl
+.DS_Store
+*.gif
+*.png
+**/data/*
+**/figures/*
+pyrightconfig.json
+.env
