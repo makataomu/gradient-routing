@@ -5,11 +5,8 @@ import uuid
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch as t
-from transformer_lens import HookedTransformer
-from transformer_lens.loading_from_pretrained import get_pretrained_model_config
-from transformers import PreTrainedTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
-import shared_configs.model_store as model_store
 from factored_representations import masklib
 from factored_representations.string_utils import (
     load_dataset_with_split,
@@ -20,16 +17,11 @@ if __name__ == "__main__":
     SAVE_MODEL = True
     OVERWRITE_MODEL = False
     model_uuid = uuid.uuid4()
-    SAVE_FILENAME = f"finetuned/my_test_run{model_uuid}"
-    if SAVE_MODEL:
-        model_store.ensure_save_path_exists(SAVE_FILENAME, OVERWRITE_MODEL)
-
-    # Load base model
-    model_name = "roneneldan/TinyStories-8M"
+    tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+        "EleutherAI/gpt-neo-125M"
+    )
     device = "cpu"
-    original_model_config = get_pretrained_model_config(model_name, device=device)
-    old_model = HookedTransformer(original_model_config)
-    tokenizer: PreTrainedTokenizer = old_model.tokenizer  # type: ignore
+    # type: ignore
 
     # ERA settings
     words_to_localize = [

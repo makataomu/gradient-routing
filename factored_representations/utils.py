@@ -18,17 +18,24 @@ def set_random_seeds():
     np.random.seed(42)
 
 
-def get_gpu_with_most_memory() -> torch.device:
+def get_gpu_with_most_memory(
+    gpus_to_limit_to: Optional[list[int]] = None,
+) -> torch.device:
     if not torch.cuda.is_available():
         if torch.backends.mps.is_available():  # mac native gpu
             return torch.device("mps")
         return torch.device("cpu")
     nvidia_smi.nvmlInit()
-    deviceCount = nvidia_smi.nvmlDeviceGetCount()
+    device_count = nvidia_smi.nvmlDeviceGetCount()
     max_free_memory = 0
     chosen_device = 0
 
-    for i in range(deviceCount):
+    gpu_ids = (
+        range(device_count)
+        if gpus_to_limit_to is None
+        else [id for id in gpus_to_limit_to if id < device_count]
+    )
+    for i in gpu_ids:
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
         info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
         if info.free > max_free_memory:
@@ -56,7 +63,7 @@ class Timer:
             f"Elapsed: {elapsed_hours:.2f} hours - "
             f"Remaining: {time_remaining:.2f} hours"
         )
-        print("-" * 80)
+        print("-" * 80, flush=True)
 
 
 def upload_to_clbin(text: str) -> Optional[str]:

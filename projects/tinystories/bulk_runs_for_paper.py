@@ -27,11 +27,41 @@ era_cfg = shared_settings.ERAConfig(
     ),
     include_conditional_bias_term=False,
 )
+demix_cfg = shared_settings.ERAConfig(
+    layers_to_mask=[],
+    to_expand={},
+    masking_scheme="full_seq",
+    masking_type="demix",
+    expanded_vs_original_dim_learning_rates=dict(
+        expanded_dim_lr_target=1.0,
+        original_dim_lr_target=1.0,
+        expanded_dim_lr_off_target=1.0,
+        original_dim_lr_off_target=1.0,
+    ),
+    include_conditional_bias_term=False,
+)
+
 era_steps = 5_000
 coherence_finetuning = 40
 forget_set_retraining = 40
 erac_l1_coeff = 1e-4
 
+demix_model_cfg = shared_settings.RunTypeConfig(
+    label="demix",
+    pretrained_model_to_load=None,
+    anneal_gradient_mask_weights=False,
+    mask_weight_increase_steps=0,
+    expand_model=False,
+    use_gradient_routing=True,
+    forget_data_labeling_percentage=1.0,
+    drop_labeled_forget_data=False,
+    drop_unlabeled_forget_data=False,
+    sort_forget_data_by_label=False,
+    num_steps_era_training=era_steps,
+    num_steps_coherence_finetuning=coherence_finetuning,
+    num_steps_forget_set_retraining=forget_set_retraining,
+    l1_coeff=erac_l1_coeff,
+)
 erac_model_cfg = shared_settings.RunTypeConfig(
     label="ERAC",
     pretrained_model_to_load=None,
@@ -108,14 +138,15 @@ if __name__ == "__main__":
     data_dir = os.path.join(parent_dir, "data")
 
     device = utils.get_gpu_with_most_memory()
-    experiment_id = "11"
+    experiment_id = "jacob_demix_2"
 
-    model_save_dir = "bulk_runs_for_paper"
+    model_save_dir = "new_bulk_demix_runs"
     ensure_shared_dir_exists(f"models/{model_save_dir}")
 
-    num_runs_per_type = 12
+    num_runs_per_type = 10
     run_configs = [
-        erac_model_cfg,
+        demix_model_cfg,
+        # erac_model_cfg,
         # base_model_cfg,
         # pure_model_cfg,
         # expanded_base_model_cfg,
@@ -132,9 +163,9 @@ if __name__ == "__main__":
             tinystories_era.do_era_training_run(
                 experiment_cfg=shared_settings.cfg,
                 run_type_cfg=run_config,
-                era_cfg=era_cfg,
+                era_cfg=demix_cfg,  # change back to erac_cfg if you want to do gradient routing
                 random_shuffle_seed=random_shuffle_seed,
-                num_validation_stories=1000,
+                num_validation_stories=3000,
                 num_stories_to_retrain=[1, 4, 16, 64],
                 device=device,
                 model_save_dir=model_save_dir,

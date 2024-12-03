@@ -365,20 +365,6 @@ elif init_from == "resume":
     model.load_state_dict(state_dict)
     iter_num = checkpoint["iter_num"]
     best_val_loss = checkpoint["best_val_loss"]
-elif init_from.startswith("gpt2"):
-    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-    # initialize from OpenAI GPT-2 weights
-    override_args = dict(dropout=dropout)
-    model = GPT.from_pretrained(init_from, override_args)
-    # read off the created config params, so we can store them into checkpoint correctly
-    for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
-        model_args[k] = getattr(model.config, k)
-# crop down the model block size if desired, using model surgery
-if block_size < model.config.block_size:
-    model.crop_block_size(block_size)
-    model_args["block_size"] = (
-        block_size  # so that the checkpoint will have the right value
-    )
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
@@ -515,7 +501,6 @@ X, Y = get_batch("train")  # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model  # unwrap DDP container if needed
-running_mfu = -1.0
 while True:
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -552,7 +537,6 @@ while True:
                     "val/loss_ablate": ablated_losses["val"],
                     "concept/loss_ablate": custom_loss_ablated,
                     "lr": lr,
-                    "mfu": running_mfu * 100,  # convert to percentage
                 },
                 step=iter_num,
             )
@@ -584,7 +568,9 @@ while True:
                         wandb.log(
                             {
                                 f"post_ablation/{k}": v
-                                for k, v in retrain_results["post_ablation_losses"].items()
+                                for k, v in retrain_results[
+                                    "post_ablation_losses"
+                                ].items()
                             },
                             step=iter_num,
                         )
@@ -592,7 +578,9 @@ while True:
                         wandb.log(
                             {
                                 f"lowest_retrain/{k}": v
-                                for k, v in retrain_results["lowest_retrain_losses"].items()
+                                for k, v in retrain_results[
+                                    "lowest_retrain_losses"
+                                ].items()
                             },
                             step=iter_num,
                         )
@@ -660,7 +648,7 @@ while True:
     scaler.update()
     # flush the gradients as soon as we can, no need for this memory anymore
     optimizer.zero_grad(set_to_none=True)
-    del loss, mask_idxs, logits # hopefully free memory maybe
+    del loss, mask_idxs, logits  # hopefully free memory maybe
     torch.cuda.empty_cache()
 
     # timing and logging
@@ -675,19 +663,23 @@ while True:
                 f"top {k} unembeds of conditional bias:",
                 [
                     tokenizer.decode(t)
-                    for t in model.lm_head(model.conditional_bias).topk(k).indices
+                    for t in raw_model.lm_head(model.conditional_bias).topk(k).indices
                 ],
             )
+        # print the L1 norm of the MLP weights in all the blocks_to_mask
+        mlp_l1_norm = 0.0
+        for block in mask_config.blocks_to_mask:
+            mlp = raw_model.transformer.h[block].mlp
+            for param in mlp.parameters():
+                mlp_l1_norm += param.abs().sum().item()
+        print(
+            f"iter {iter_num} done in {dt:.1f} sec: loss {los:.4f}, mlp_l1 {mlp_l1_norm:.4f}"
+        )
+        wandb.log({"mlp_l1_norm": mlp_l1_norm}, step=iter_num)
 
         # get loss as float. note: this is a CPU-GPU sync point
         # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
-        #lossf = loss.item() * gradient_accumulation_steps
-        #if local_iter_num >= 5:  # let the training loop settle a bit
-        #    mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-        #    running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
-        #print(
-        #    f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms"
-        #)
+        # lossf = loss.item() * gradient_accumulation_steps
     iter_num += 1
     local_iter_num += 1
 

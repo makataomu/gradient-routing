@@ -1,4 +1,5 @@
 # %%
+import random
 import sys
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
@@ -30,9 +31,12 @@ class RetrainExperimentConfig:
     model_save_path: str
     model_type: str
     prompt: str
-    mask_rule: Optional[Callable]
+    retrain_all_steps: bool = False
     dry_run: bool = False
     eval_interval: Optional[int] = 1
+    num_times_to_retrain: int = 1
+    test_retain_stories: int = 1000
+    test_forget_stories: int = 1000
 
 
 @t.inference_mode()
@@ -40,7 +44,6 @@ def eval_model(
     model,
     dataset: list[tuple],
     truncate_at: int,
-    mask_rule: Optional[Callable],
 ) -> Dict[str, float]:
     total_losses = {}
     dataloader = data.DataLoader(
@@ -48,8 +51,6 @@ def eval_model(
     )
     torch_device = t.device(model.cfg.device)
     batch_losses = []
-    if mask_rule is not None:
-        batch_masked_losses = []
     for batch in dataloader:
         stories, labels = batch
         tokens, attention_mask = string_utils.tokenize_batch(
@@ -65,20 +66,8 @@ def eval_model(
             model, tokens, attention_mask, None
         )
         batch_losses.append(loss.item())
-        if mask_rule is not None:
-            mask = (
-                1 - mask_rule((tokens, labels))
-            )  # one minus because zero corresponds to a token fully in the target/forget data
-            masked_loss = training.compute_preds_and_get_ce_loss(
-                model, tokens, attention_mask, mask
-            )
-            batch_masked_losses.append(masked_loss.item())  # type: ignore
 
     total_losses["loss"] = sum(batch_losses) / len(batch_losses)
-    if mask_rule is not None:
-        total_losses["loss_under_mask"] = sum(batch_masked_losses) / len(  # type: ignore
-            batch_masked_losses  # type: ignore
-        )
     return total_losses
 
 
@@ -106,6 +95,7 @@ def retrain_model(
     train_forget_stories: list[tuple],
     num_stories: int,
     num_steps: int,
+    all_steps: bool,
     words_to_localize: list[str],
     prompt: str,
     truncate_at: int,
@@ -126,6 +116,9 @@ def retrain_model(
     eval_losses = {"update_step": [], "forget": [], "retain": []}
     # eval_losses["token_count"].append(eval_words(model, words_to_localize, prompt))
 
+    consecutive_increases = 0
+    prev_forget_loss = float("inf")
+
     for step in (pbar := tqdm(range(num_steps))):
         loss = training.compute_preds_and_get_ce_loss(
             model, input_ids, attention_mask, None
@@ -144,18 +137,24 @@ def retrain_model(
             )
 
             if step % eval_interval_sped_up == 0 or step == num_steps - 1:
-                forget_loss = eval_model(
-                    model, test_forget_dataset, truncate_at, mask_rule=model.mask_rule
-                )
-                retain_loss = eval_model(
-                    model, test_retain_dataset, truncate_at, mask_rule=model.mask_rule
-                )
+                forget_loss = eval_model(model, test_forget_dataset, truncate_at)
+                retain_loss = eval_model(model, test_retain_dataset, truncate_at)
                 eval_losses["update_step"].append(step + 1)
                 eval_losses["forget"].append(forget_loss)
                 eval_losses["retain"].append(retain_loss)
+                if forget_loss["loss"] > prev_forget_loss:
+                    consecutive_increases += 1
+                else:
+                    consecutive_increases = 0
+                prev_forget_loss = forget_loss["loss"]
                 # eval_losses["token_count"].append(
                 #     eval_words(model, words_to_localize, prompt)
                 # )
+                if consecutive_increases >= 3 and not all_steps:
+                    print(
+                        f"Early stopping at step {step + 1} due to increasing forget loss for 3 consecutive evaluations"
+                    )
+                    break
 
     return eval_losses
 
@@ -176,25 +175,21 @@ def plot_results(
         pure_model,
         test_forget_stories,
         truncate_at=truncate_at,
-        mask_rule=pure_model.mask_rule,
     )
     pure_model_retain = eval_model(
         pure_model,
         test_retain_stories,
         truncate_at=truncate_at,
-        mask_rule=pure_model.mask_rule,
     )
     base_model_forget = eval_model(
         base_model,
         test_forget_stories,
         truncate_at=truncate_at,
-        mask_rule=base_model.mask_rule,
     )
     base_model_retain = eval_model(
         base_model,
         test_retain_stories,
         truncate_at=truncate_at,
-        mask_rule=base_model.mask_rule,
     )
 
     fig, ax = plt.subplots()
@@ -252,34 +247,44 @@ def run_retrain_evals(
     forget_stories, retain_stories, cfg: RetrainExperimentConfig, device
 ):
     max_num_stories = max(cfg.num_stories_to_retrain)
-    train_forget_stories = forget_stories[:max_num_stories]
-    test_forget_stories = forget_stories[max_num_stories:]
 
-    results = get_experiment_results(
-        train_forget_stories, test_forget_stories, retain_stories, cfg, device
+    dfs = []
+    for _ in range(cfg.num_times_to_retrain):
+        test_retain_stories = random.sample(retain_stories, cfg.test_retain_stories)
+        forget_sampled = random.sample(
+            forget_stories, cfg.test_forget_stories + max_num_stories
+        )
+        random.shuffle(forget_stories)
+        train_forget_stories = forget_sampled[:max_num_stories]
+        test_forget_stories = forget_sampled[max_num_stories:]
+        results = get_experiment_results(
+            train_forget_stories, test_forget_stories, test_retain_stories, cfg, device
+        )
+        res_df = results_to_df(results)
+        dfs.append(res_df)
+    # mean the dfs along the numeric columns
+    mean_df = (
+        pd.concat(dfs).groupby(["num_stories", "update_step"]).mean().reset_index()
     )
-    res_df = results_to_df(results)
 
     figs = []
 
     # Only plot if passed models to eval
-    if cfg.pure_model_path is not None and cfg.base_model_path is not None:
-        pure_model = model_store.load_model(cfg.pure_model_path, cfg.model_type, device)
-        base_model = model_store.load_model(cfg.base_model_path, cfg.model_type, device)
-        pure_model.mask_rule = cfg.mask_rule  # type: ignore
-        base_model.mask_rule = cfg.mask_rule  # type: ignore
+    # if cfg.pure_model_path is not None and cfg.base_model_path is not None:
+    #     pure_model = model_store.load_model(cfg.pure_model_path, cfg.model_type, device)
+    #     base_model = model_store.load_model(cfg.base_model_path, cfg.model_type, device)
 
-        fig, ax = plot_results(
-            res=results,
-            pure_model=pure_model,
-            base_model=base_model,
-            test_forget_stories=test_forget_stories,
-            test_retain_stories=retain_stories[:max_num_stories],
-            truncate_at=cfg.max_tokens,
-            loss_type="loss",
-        )
-        figs.append(fig)
-    return figs, res_df
+    #     fig, ax = plot_results(
+    #         res=results,
+    #         pure_model=pure_model,
+    #         base_model=base_model,
+    #         test_forget_stories=test_forget_stories,
+    #         test_retain_stories=retain_stories[:max_num_stories],
+    #         truncate_at=cfg.max_tokens,
+    #         loss_type="loss",
+    #     )
+    #     figs.append(fig)
+    return figs, mean_df
 
 
 def get_experiment_results(
@@ -298,25 +303,20 @@ def get_experiment_results(
         pure_model = model_store.load_model(cfg.pure_model_path, cfg.model_type, device)
         models.append(pure_model)
 
-    for m in models:
-        m.mask_rule = cfg.mask_rule  # type: ignore
-
     print("Relearn")
     res = {}
     for num_stories in cfg.num_stories_to_retrain:
-        test_forget_dataset = test_forget_stories[: cfg.eval_batch_size * 5]
-        test_retain_dataset = retain_stories[: cfg.eval_batch_size * 5]
+        test_forget_dataset = test_forget_stories
+        test_retain_dataset = retain_stories
         initial_forget_loss = eval_model(
             model,
             test_forget_dataset,
             cfg.max_tokens,
-            mask_rule=model.mask_rule,
         )
         initial_retain_loss = eval_model(
             model,
             test_retain_dataset,
             cfg.max_tokens,
-            mask_rule=model.mask_rule,
         )
         eval_losses = retrain_model(
             model,
@@ -324,6 +324,7 @@ def get_experiment_results(
             test_retain_dataset=test_retain_dataset,
             train_forget_stories=train_forget_stories,
             num_stories=num_stories,
+            all_steps=cfg.retrain_all_steps,
             num_steps=cfg.num_steps,
             words_to_localize=cfg.words_to_localize,
             prompt=cfg.prompt,
@@ -382,7 +383,6 @@ if __name__ == "__main__":
         model_type="roneneldan/TinyStories-28M",
         prompt="Once upon a time, Timmy went to the forest",
         dry_run=dry_run,
-        mask_rule=None,
     )
 
     figs, results = run_retrain_evals(

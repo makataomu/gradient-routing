@@ -5,12 +5,14 @@ import os
 import sys
 import tempfile
 from copy import deepcopy
+from functools import partial
 from typing import Callable, Optional, Tuple
 
 import numpy as np
 import torch as t
 import torch.utils.data as data
 import tqdm
+import wandb
 from transformer_lens import HookedTransformer
 from transformer_lens.loading_from_pretrained import get_pretrained_model_config
 
@@ -20,7 +22,6 @@ import factored_representations.training as training
 import factored_representations.utils as utils
 import projects.tinystories.shared_settings as shared_settings
 import shared_configs.model_store as model_store
-import wandb
 from factored_representations import masklib
 from projects.tinystories.retraining_evals import (
     RetrainExperimentConfig,
@@ -30,7 +31,7 @@ from projects.tinystories.retraining_evals import (
 from projects.tinystories.unlearning_eval import unlearning_eval
 
 MASKING_SCHEMES = ["concept", "freq", "full_seq", "no_routing"]
-MASKING_TYPES = ["ddbp", "slgr"]
+MASKING_TYPES = ["ddbp", "slgr", "demix"]
 SCHEMES_WITH_PARTIAL_WEIGHTS = ["freq", "full_seq"]
 
 
@@ -39,20 +40,24 @@ def eval_on_validation(
     validation_forget_data: list[tuple],
     validation_retain_data: list[tuple],
     truncate_at: int,
-    mask_rule: Optional[Callable],
+    ids_to_set=None,  # super hacky thing because DEMIX modifies forward pass
 ) -> Tuple[dict, dict]:
+    if ids_to_set is not None:
+        ids_to_set[0] = t.tensor(0)
     validation_forget_loss = eval_model(
         model,
         dataset=validation_forget_data,
         truncate_at=truncate_at,
-        mask_rule=mask_rule,
     )
+    if ids_to_set is not None:
+        ids_to_set[0] = t.tensor(1)
     validation_retain_loss = eval_model(
         model,
         dataset=validation_retain_data,
         truncate_at=truncate_at,
-        mask_rule=mask_rule,
     )
+    if ids_to_set is not None:
+        ids_to_set[0] = None
     return validation_forget_loss, validation_retain_loss
 
 
@@ -61,9 +66,10 @@ def _eval_to_dict(
     validation_forget_data: list[tuple],
     validation_retain_data: list[tuple],
     truncate_at: int,
+    ids_to_set=None,
 ):
     validation_forget_loss, validation_retain_loss = eval_on_validation(
-        model, validation_forget_data, validation_retain_data, truncate_at, None
+        model, validation_forget_data, validation_retain_data, truncate_at, ids_to_set
     )
     return {
         "forget_loss": validation_forget_loss["loss"],
@@ -291,7 +297,7 @@ def do_era_training_run(
         data_rng.shuffle(training_stories)
 
     validation_stories = string_utils.load_dataset_with_split(
-        "delphi-suite/stories", "validation", max_stories=1000 if dry_run else None
+        "delphi-suite/stories", "validation", max_stories=None
     )
     data_rng.shuffle(validation_stories)
     truncated_validation_stories = string_utils.truncate_stories_by_chars(
@@ -303,8 +309,10 @@ def do_era_training_run(
             experiment_cfg.words_to_localize,
         )
     )
-    num_val_to_use = experiment_cfg.batch_size if dry_run else num_validation_stories
-    forget_validation_stories = forget_validation_stories[:num_val_to_use]
+    num_val_to_use = num_validation_stories
+    forget_validation_stories = forget_validation_stories[
+        : num_val_to_use + max(num_stories_to_retrain)
+    ]
     retain_validation_stories = retain_validation_stories[:num_val_to_use]
 
     num_token_freq_calculate_stories = 25000
@@ -352,6 +360,12 @@ def do_era_training_run(
             t.tensor(info["mask_weight"]).float().to(device)
         )
         assert mask_weights_for_tokens.shape == (old_model.cfg.d_vocab,)
+    elif era_cfg.masking_type == "demix":
+        print(
+            "using demix, ignoring layers_to_mask, masking_scheme, to_expand, l1, etc."
+        )
+        mask_rule = partial(full_seq_mask_rule, device=device)
+        mask_applier = None  # satisfy type checker
     else:
         raise ValueError(f"Unknown masking type: {era_cfg.masking_type}")
 
@@ -387,6 +401,7 @@ def do_era_training_run(
     )
 
     print("Setting up masks")
+    mask_to_use_in_ff = None  # type: ignore
     if era_cfg.masking_type == "ddbp":
         mask_applier = masklib.MaskApplier(
             model,
@@ -425,6 +440,36 @@ def do_era_training_run(
         )
         for param in old_model.parameters():
             param.requires_grad = False
+    elif era_cfg.masking_type == "demix":
+        mask_to_use_in_ff: Optional[list[t.Tensor]] = [t.tensor(0)]
+
+        class DEMIXMLP(t.nn.Module):
+            def __init__(self, old_mlp):
+                super().__init__()
+                self.good_mlp = deepcopy(old_mlp)
+                self.bad_mlp = deepcopy(old_mlp)
+
+            def forward(self, x):
+                mask = mask_to_use_in_ff[0]  # type: ignore
+                if len(mask.size()) == 0 and mask.item() == 1:
+                    return self.good_mlp(x)
+                elif len(mask.size()) == 0 and mask.item() == 0:
+                    return self.bad_mlp(x)
+                else:
+                    # TODO we can parallelize this to get some easy speedups
+                    # but for simplicity now, we don't
+                    good_output = self.good_mlp(x) * mask[:, :, None]
+                    bad_output = self.bad_mlp(x) * (1 - mask)[:, :, None]
+                    # mask of shape [batch, seq]
+                    # *_output of shape [batch, seq, d_model]
+                    mixed = good_output + bad_output
+                    return mixed
+
+        # Initialize the custom MLPs
+        for layer in range(model.cfg.n_layers):
+            # make the MLP our custom demix MLP
+            model.blocks[layer].mlp = DEMIXMLP(model.blocks[layer].mlp)
+        model.init_weights()  # should reinitialize all the new params we added
     else:
         raise ValueError(f"Unknown masking type: {era_cfg.masking_type}")
 
@@ -475,8 +520,8 @@ def do_era_training_run(
                 )
 
         if era_cfg.masking_type == "ddbp":
-            with mask_applier((input_ids, labels), mask_weight=mask_weight):
-                mask_weights = mask_rule((input_ids, labels))
+            with mask_applier((input_ids, labels), mask_weight=mask_weight):  # type: ignore
+                mask_weights = mask_rule((input_ids, labels))  # type: ignore
 
                 if use_bias:
 
@@ -531,6 +576,13 @@ def do_era_training_run(
                 bad_loss.backward()
             with t.inference_mode():
                 loss = good_loss + bad_loss  # keep for logging
+        elif era_cfg.masking_type == "demix":
+            mask_to_use_in_ff[0] = mask_rule(labels, input_ids.shape[1] - 1)  # type: ignore
+            loss = training.compute_preds_and_get_ce_loss(
+                model, input_ids, attention_mask, None
+            )
+            loss.backward()
+            mask_to_use_in_ff[0] = None  # type: ignore
         else:
             raise ValueError(f"Unknown masking type: {era_cfg.masking_type}")
         if step % experiment_cfg.grad_accum_steps == 0:
@@ -575,18 +627,12 @@ def do_era_training_run(
                 forget_validation_stories[: 5 * experiment_cfg.batch_size],
                 retain_validation_stories[: 5 * experiment_cfg.batch_size],
                 experiment_cfg.truncate_batch_tokens_at,
-                mask_rule,
+                ids_to_set=mask_to_use_in_ff,
             )
             wandb.log(
                 {
                     "validation_forget_loss": validation_forget_loss["loss"],
                     "validation_retain_loss": validation_retain_loss["loss"],
-                    "validation_forget_loss_under_mask": validation_forget_loss[
-                        "loss_under_mask"
-                    ],
-                    "validation_retain_loss_under_mask": validation_retain_loss[
-                        "loss_under_mask"
-                    ],
                 }
             )
 
@@ -595,6 +641,7 @@ def do_era_training_run(
         forget_validation_stories,
         retain_validation_stories,
         truncate_at=experiment_cfg.truncate_batch_tokens_at,
+        ids_to_set=mask_to_use_in_ff,
     )
     wandb.log(
         {
@@ -603,10 +650,18 @@ def do_era_training_run(
         }
     )
 
+    if model_save_path is not None:
+        model_store.save_model(model, model_save_path + "_pre_ablation")
+
     print("PHASE TWO: COHERENCE TRAINING")
-    contracted_model = model_expansion.contract_model(model, original_model_config)
+    if era_cfg.masking_type != "demix":
+        contracted_model = model_expansion.contract_model(model, original_model_config)
+    else:
+        for layer in range(model.cfg.n_layers):
+            model.blocks[layer].mlp = model.blocks[layer].mlp.good_mlp
+        contracted_model = model
     del model  # don't want to get confused
-    del mask_applier  # don't need mask_applier after contraction
+    del mask_applier  # don't need mask_applier after contraction # type: ignore
     del optim
     del dataloader
     del specs
@@ -661,7 +716,6 @@ def do_era_training_run(
         contracted_model,
         dataset=retain_in_sample_validation,
         truncate_at=experiment_cfg.truncate_batch_tokens_at,
-        mask_rule=mask_rule,
     )["loss"]
     best_model_weights = deepcopy(contracted_model.state_dict())
     best_step = 0
@@ -681,7 +735,6 @@ def do_era_training_run(
             contracted_model,
             dataset=retain_in_sample_validation,
             truncate_at=experiment_cfg.truncate_batch_tokens_at,
-            mask_rule=None,
         )["loss"]
         if test_retain_loss < best_loss:
             best_loss = test_retain_loss
@@ -695,18 +748,11 @@ def do_era_training_run(
                 forget_validation_stories[: 5 * experiment_cfg.batch_size],
                 retain_validation_stories[: 5 * experiment_cfg.batch_size],
                 experiment_cfg.truncate_batch_tokens_at,
-                mask_rule,
             )
             wandb.log(
                 {
                     "validation_forget_loss": validation_forget_loss["loss"],
                     "validation_retain_loss": validation_retain_loss["loss"],
-                    "validation_forget_loss_under_mask": validation_forget_loss[
-                        "loss_under_mask"
-                    ],
-                    "validation_retain_loss_under_mask": validation_retain_loss[
-                        "loss_under_mask"
-                    ],
                 }
             )
     wandb.run.summary["best_coherence_step"] = best_step  # type: ignore
@@ -733,7 +779,7 @@ def do_era_training_run(
         prompt=experiment_cfg.unlearning_eval_prompt,
         dry_run=dry_run,
         eval_interval=1,
-        mask_rule=mask_rule,
+        num_times_to_retrain=5,
     )
     figs, res_df = run_retrain_evals(
         forget_validation_stories, retain_validation_stories, retrain_cfg, device
@@ -769,8 +815,9 @@ if __name__ == "__main__":
     $(pdm venv activate) && python projects/tinystories/tinystories_era.py
     """
 
-    model_save_name = "era_light_touch_test"
-    model_save_dir = "bulk_runs_for_paper"
+    use_era = True
+    model_save_name = "demix_debug_era" if use_era else "demix_debug_demix"
+    model_save_dir = "debugging_demix"
     DRY_RUN = len(sys.argv) > 1 and sys.argv[1] == "dry_run"
 
     era_cfg = shared_settings.ERAConfig(
@@ -786,9 +833,24 @@ if __name__ == "__main__":
         ),
         include_conditional_bias_term=False,
     )
+    demix_cfg = shared_settings.ERAConfig(
+        layers_to_mask=[],
+        to_expand={},
+        masking_scheme="full_seq",
+        masking_type="demix",
+        expanded_vs_original_dim_learning_rates=dict(
+            expanded_dim_lr_target=1.0,
+            original_dim_lr_target=1.0,
+            expanded_dim_lr_off_target=1.0,
+            original_dim_lr_off_target=1.0,
+        ),
+        include_conditional_bias_term=False,
+    )
 
     era_steps = 12_500
-    coherence_finetuning = 60
+    coherence_finetuning = (
+        -1  # want to see if that weird bug also happens when doing era with no coherence, doing -1 because the function above does +1 for some reason
+    )
     forget_set_retraining = 40
 
     erac_model_cfg = shared_settings.RunTypeConfig(
@@ -811,14 +873,15 @@ if __name__ == "__main__":
     res_df = do_era_training_run(
         experiment_cfg=shared_settings.cfg,
         run_type_cfg=erac_model_cfg,
-        era_cfg=era_cfg,
+        era_cfg=era_cfg if use_era else demix_cfg,
         random_shuffle_seed=0,
         num_validation_stories=100,
-        num_stories_to_retrain=[1, 4, 16, 64],
+        num_stories_to_retrain=[64],
         device=device,
         model_save_dir=model_save_dir,
         model_save_name=model_save_name,
         overwrite_model_saves=True,
-        validation_data_save_dir=None,
+        validation_data_save_dir="data_debugging",
         dry_run=DRY_RUN,
     )
+    res_df.to_csv(f"data_debugging/{model_save_name}_retrain.csv")

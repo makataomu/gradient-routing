@@ -52,7 +52,11 @@ class SplitAutoencoder(nn.Module):
         layer_sizes = [input_size] + hidden_layer_sizes + [self.hidden_size]
         self.encoder = get_mlp(layer_sizes, final_layer_has_bias=False)
         self.decoder_good = get_mlp(layer_sizes[::-1], final_layer_has_bias=True)
-        self.decoder_certificate = get_mlp(
+        self.decoder_certificate_top = get_mlp(
+            [self.hidden_size // 2] + hidden_layer_sizes[::-1] + [input_size],
+            final_layer_has_bias=True,
+        )
+        self.decoder_certificate_bot = get_mlp(
             [self.hidden_size // 2] + hidden_layer_sizes[::-1] + [input_size],
             final_layer_has_bias=True,
         )
@@ -96,9 +100,34 @@ class SplitAutoencoder(nn.Module):
         )
         return out_good, out_bad, encoding
 
-    def forward_certificate(self, x):
-        encoding_good = self.encode(x)[:, : self.hidden_size // 2].detach()
-        out = self.decoder_certificate(encoding_good).reshape((x.shape[0], 1, 28, 28))
+    def forward_all(self, x):
+        # Used for efficient training
+        out_shape = (x.shape[0], 1, 28, 28)
+        out_good, out_bad, encoding = self.forward(x)
+
+        encoding_detached = encoding.detach()
+        top_encoding = encoding_detached[:, : self.hidden_size // 2]
+        bot_encoding = encoding_detached[:, self.hidden_size // 2 :]
+        top_certificate = self.decoder_certificate_top(top_encoding).reshape(out_shape)
+        bot_certificate = self.decoder_certificate_bot(bot_encoding).reshape(out_shape)
+        return out_good, out_bad, top_certificate, bot_certificate, encoding
+
+    def forward_certificate_top(self, x):
+        """
+        Note inconsistency in naming: in the paper, this is the "bottom half" Certificate.
+        """
+        out_shape = (x.shape[0], 1, 28, 28)
+        top_encoding = self.encode(x)[:, : self.hidden_size // 2].detach()
+        out = self.decoder_certificate_top(top_encoding).reshape(out_shape)
+        return out
+
+    def forward_certificate_bot(self, x):
+        """
+        Note inconsistency in naming: in the paper, this is the "top half" Certificate.
+        """
+        out_shape = (x.shape[0], 1, 28, 28)
+        bot_encoding = self.encode(x)[:, self.hidden_size // 2 :].detach()
+        out = self.decoder_certificate_bot(bot_encoding).reshape(out_shape)
         return out
 
 
@@ -161,15 +190,16 @@ def hash_to_bool(imgs: torch.Tensor):
 
 
 def is_bad_data(imgs, labels):
-    return labels <= 4
+    return labels > 4
     # return hash_to_bool(imgs)
 
 
 def calculate_split_losses(batch, model, override_is_bad: torch.Tensor = None):
     device = next(model.parameters()).device
     img, labels = [d.to(device) for d in batch]
-    out_good, out_bad, encodings = model(img)  # encodings.shape = (batch, hidden_size)
-    out_certificate = model.forward_certificate(img)
+    out_good, out_bad, out_certificate_top, out_certificate_bot, encodings = (
+        model.forward_all(img)
+    )  # encodings.shape = (batch, hidden_size)
 
     encodings_n = normalize(encodings, 0)
     encodings_good_n = encodings_n[:, : model.hidden_size // 2]
@@ -191,7 +221,8 @@ def calculate_split_losses(batch, model, override_is_bad: torch.Tensor = None):
         "Good Decoder": img_loss(out_good, img, ~is_bad),
         "Good Decoder (bad data)": img_loss(out_good, img, is_bad),
         "Bad Decoder": img_loss(out_bad, img, subset=torch.maximum(is_bad, override)),
-        "Certificate Decoder": img_loss(out_certificate, img),
+        "Certificate Decoder (top)": img_loss(out_certificate_top, img),
+        "Certificate Decoder (bot)": img_loss(out_certificate_bot, img),
         "Good Encoder L1 penalty": top_encoding.abs().mean(dim=0).sum(),
         "Bad Encoder L1 penalty": bot_encoding.abs().mean(dim=0).sum(),
         "Correlation penalty": corr_penalty,
@@ -264,18 +295,21 @@ def evaluate(model, dataloader):
         "label": [],
         "decoder_good": [],
         "decoder_bad": [],
-        "certificate_decoder": [],
+        "certificate_top": [],
+        "certificate_bot": [],
     }
     with torch.inference_mode():
         for data in dataloader:
             img, labels = [d.to(device) for d in data]
 
-            out_good, out_bad, _ = model(img)  # encodings.shape = (batch, hidden_size)
-            out_censored = model.forward_certificate(img)
+            out_good, out_bad, certificate_top, certificate_bot, _ = model.forward_all(
+                img
+            )  # encodings.shape = (batch, hidden_size)
             preds = {
                 "decoder_good": out_good,
                 "decoder_bad": out_bad,
-                "certificate_decoder": out_censored,
+                "certificate_top": certificate_top,
+                "certificate_bot": certificate_bot,
             }
             for label, pred in preds.items():
                 mse_by_img = eval(pred, img)
@@ -325,7 +359,8 @@ if __name__ == "__main__":
             "Good Decoder": 1,
             "Good Decoder (bad data)": 1,
             "Bad Decoder": 1,
-            "Certificate Decoder": 1,
+            "Certificate Decoder (top)": 1,
+            "Certificate Decoder (bot)": 1,
             "Bad Encoder L1 penalty": 3e-3,
             "Good Encoder L1 penalty": 2e-2,  # 2e-2 if using all data for top else 3e-3,
             "Correlation penalty": 0.1,
@@ -342,37 +377,48 @@ if __name__ == "__main__":
         routing_pct=lambda ep: 1,
     )
 
+    # %%
     res = evaluate(model, testloader)
     res["is_bad"] = is_bad_data(None, labels=res.index)
     res["Decoder"] = res["decoder_bad"] * res["is_bad"] + res["decoder_good"] * (
         ~res["is_bad"]
     )
-    res.rename(columns={"certificate_decoder": "Certificate"}, inplace=True)
 
     fig, ax = plt.subplots(dpi=300, figsize=(4.5, 2.5))
-    res[["Decoder", "Certificate"]].plot(kind="bar", ax=ax, width=0.8)
+    res[["Decoder", "certificate_top", "certificate_bot"]].plot(
+        kind="bar", ax=ax, width=0.8
+    )
     ax.set_xlabel("Label")
     ax.set_ylabel("Validation loss (MAE)")
     ax.axvline(4.5, color="black", ls=":")
 
-    hatch_color = (0.85, 0.75, 0)
+    colors = ["C4", "C3", "C0"]
+    hatches = [None, "///", "\\\\"]
+    hatch_colors = [None, (1, 0.2, 0.2, 1), (0.2, 0.2, 1, 1)]
+    labels = ["Decoder", "Certificate (top)", "Certificate (bot)"]
+
+    patches = []
     for idx, bar in enumerate(ax.patches):
-        bar.set_facecolor("C3" if idx <= 4 else "gold" if idx > 9 else "C0")
-        if idx > 9:
+        color_idx = idx // 10
+        color = colors[color_idx]
+        hatch = hatches[color_idx]
+        hatch_color = hatch_colors[color_idx]
+        bar.set_facecolor(color)
+        if hatch is not None:
             bar.set_edgecolor(hatch_color)
             bar.set_linewidth(0)
-            bar.set_hatch("///")
+            bar.set_hatch(hatch)
+        if idx % 10 == 0:
+            patch = mpatches.Patch(
+                facecolor=color,
+                hatch=hatch,
+                edgecolor=hatch_color,
+                linewidth=0,
+                label=labels[color_idx],
+            )
+            patches.append(patch)
 
-    decoder_patch = mpatches.Patch(color="C3", label="Decoder (0-4))")
-    decoder2_patch = mpatches.Patch(color="C0", label=f"Decoder ({top_label})")
-    certificate_patch = mpatches.Patch(
-        facecolor="gold",
-        label="Certificate",
-        hatch="//",
-        edgecolor=hatch_color,
-        linewidth=0,
-    )
-    ax.legend(handles=[decoder_patch, decoder2_patch, certificate_patch])
+    ax.legend(handles=patches)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=0, ha="center")
     plt.savefig("figures/mnist_performance.pdf", bbox_inches="tight")
 
@@ -393,11 +439,7 @@ if __name__ == "__main__":
     for label, digit_ims in enumerate(digits):
         rows = [0, 1] if label <= 4 else [3, 4]
         cols = slice((label % 5) * num_images, (label % 5) * num_images + num_images)
-        utils.bulk_plot(
-            digit_ims,
-            axes[rows, cols],
-            model,
-        )
+        utils.bulk_plot(digit_ims, axes[rows, cols], model, "bot")
 
     heights = [0.78, 0.60, 0.37, 0.19]
     labels = ["Input (0-4)", "Reconstruction", "Input (5-9)", "Reconstruction"]
@@ -479,16 +521,21 @@ if __name__ == "__main__":
             _, out_bad, _ = model(bad)
             out_good, _, _ = model(good)
 
-            out_good_certificate = model.forward_certificate(good)
-            out_bad_certificate = model.forward_certificate(bad)
+            out_good_certificate_top = model.forward_certificate_top(good)
+            out_bad_certificate_top = model.forward_certificate_top(bad)
+
+            out_good_certificate_bot = model.forward_certificate_bot(good)
+            out_bad_certificate_bot = model.forward_certificate_bot(bad)
 
             ims = [
                 good,
                 bad,
                 out_good,
                 out_bad,
-                out_good_certificate,
-                out_bad_certificate,
+                out_good_certificate_top,
+                out_bad_certificate_top,
+                out_good_certificate_bot,
+                out_bad_certificate_bot,
             ]
             ims = [x.squeeze().cpu().numpy() for x in ims]
             for x in ims:

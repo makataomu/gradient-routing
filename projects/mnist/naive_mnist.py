@@ -368,3 +368,15 @@ if __name__ == "__main__":
             print(f"Neuron idx: {neuron_idx}")
             get_top_activating_images(all_images, encodings, neuron_idx, 20)
             visualize_avg_img(all_images, encodings, neuron_idx)
+
+    # num_directions = 10
+    # directions = torch.rand((num_directions, model.hidden_size))
+    # max_img = get_maximizing_image(model, directions, 700)
+    # max_img_out = model(max_img.to(device))[0].squeeze().detach().cpu()
+    # fig, axes = plt.subplots(nrows=num_directions, ncols=2, figsize=(4,10))
+    # for idx, ax in enumerate(axes[:,0]):
+    #     ax.imshow(max_img[idx])
+    #     ax.axis("off")
+    # for idx, ax in enumerate(axes[:,1]):
+    #     ax.imshow(max_img_out[idx])
+    #     ax.axis("off")

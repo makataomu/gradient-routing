@@ -12,7 +12,10 @@ from torchvision import datasets, transforms
 import projects.mnist.base_autoencoder as base_autoencoder
 import projects.mnist.representation_splitting as rs
 
-""" These are NOT the ablations that appear in the paper. """
+"""
+    Alignment tax: loss_split_model - loss_base_model on GOOD data
+    Unlearning ability: loss_split_model - loss_base_model on BAD data
+"""
 
 q5 = lambda x: np.quantile(x, q=0.05)
 q95 = lambda x: np.quantile(x, q=0.95)

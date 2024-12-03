@@ -3,15 +3,16 @@ import glob
 import os
 import sys
 from functools import partial
+from typing import Optional
 
 import numpy as np
 import torch as t
 import torch.utils.data as data
 import tqdm
+import wandb
 
 import factored_representations.string_utils as string_utils
 import shared_configs.model_store as model_store
-import wandb
 from factored_representations.utils import get_gpu_with_most_memory
 from projects.tinystories.retraining_evals import (
     RetrainExperimentConfig,
@@ -120,11 +121,18 @@ def do_rmu_training_run(
     eval_every: int,
     learning_rate: float,
     num_steps_forget_set_retraining: int,
+    retrain_all_steps: bool,
+    num_stories_to_retrain: list[int],
+    forget_data_labeling_pct: float,
+    num_times_to_retrain: int,
+    additional_fields_to_save_to_df: Optional[dict] = None,
+    run_type="rmu",
+    device=None,
 ):
     model_save_path = os.path.join(model_save_dir, model_save_name)
     model_store.ensure_save_path_exists(model_save_path, overwrite=True)
 
-    device = get_gpu_with_most_memory()
+    device = get_gpu_with_most_memory() if device is None else device
     data_rng = np.random.default_rng(random_shuffle_seed)
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -161,6 +169,15 @@ def do_rmu_training_run(
         truncated_stories, experiment_cfg.words_to_localize
     )
 
+    # partial oversight
+    num_forget_labeled = int(len(forget_stories) * forget_data_labeling_pct)
+    forget_stories_labeled = forget_stories[:num_forget_labeled]
+    forget_stories_unlabeled = [
+        (story, 1) for story, _ in forget_stories[num_forget_labeled:]
+    ]
+    retain_stories += forget_stories_unlabeled
+    forget_stories = forget_stories_labeled
+
     validation_stories = string_utils.load_dataset_with_split(
         "delphi-suite/stories", "validation", max_stories=1000 if dry_run else None
     )
@@ -175,13 +192,15 @@ def do_rmu_training_run(
         )
     )
     num_val_to_use = experiment_cfg.batch_size if dry_run else num_validation_stories
-    forget_validation_stories = forget_validation_stories[:num_val_to_use]
+    forget_validation_stories = forget_validation_stories[
+        : num_val_to_use + max(num_stories_to_retrain)
+    ]
     retain_validation_stories = retain_validation_stories[:num_val_to_use]
 
     forget_dataloader, retain_dataloader = [
         data.DataLoader(
             string_utils.ListDataset(stories),
-            shuffle=False,
+            shuffle=True,
             batch_size=experiment_cfg.batch_size,
         )
         for stories in [forget_stories, retain_stories]
@@ -275,25 +294,31 @@ def do_rmu_training_run(
 
     retrain_cfg = RetrainExperimentConfig(
         words_to_localize=experiment_cfg.words_to_localize,
-        num_stories_to_retrain=[1] if dry_run else [1, 4, 16, 64],
+        num_stories_to_retrain=[1] if dry_run else num_stories_to_retrain,
         num_steps=1 if dry_run else num_steps_forget_set_retraining,
+        num_times_to_retrain=num_times_to_retrain,
         eval_batch_size=experiment_cfg.batch_size,
         max_tokens=experiment_cfg.truncate_batch_tokens_at,
         pure_model_path=None,
         base_model_path=None,
+        retrain_all_steps=retrain_all_steps,
         model_save_path=model_save_path,
         model_type=experiment_cfg.transformer_lens_model_name,
         prompt=experiment_cfg.unlearning_eval_prompt,
         dry_run=dry_run,
         eval_interval=1,
-        mask_rule=None,
+        test_retain_stories=num_validation_stories,
+        test_forget_stories=num_validation_stories,
     )
     figs, res_df = run_retrain_evals(
         forget_validation_stories, retain_validation_stories, retrain_cfg, device
     )
-    res_df.insert(0, "run_type", "rmu")
+    res_df.insert(0, "run_type", run_type)
     res_df.insert(1, "model_save_name", model_save_name)
     res_df.insert(2, "random_seed", random_shuffle_seed)
+    if additional_fields_to_save_to_df is not None:
+        for idx, (key, value) in enumerate(additional_fields_to_save_to_df.items()):
+            res_df.insert(idx + 3, key, value)
 
     if validation_data_save_dir is not None:
         res_df.to_csv(
@@ -335,6 +360,10 @@ if __name__ == "__main__":
             eval_every=10,
             learning_rate=5e-4,
             num_steps_forget_set_retraining=40,
+            retrain_all_steps=True,
+            num_stories_to_retrain=[4, 16, 64],
+            num_times_to_retrain=5,
+            forget_data_labeling_pct=1.0,
         )
         if DRY_RUN:
             break

@@ -1,18 +1,19 @@
-import torch
-import transformers
-from model import GPTConfig, GPT, MaskConfig
-from dist_dataloader import DistributedDataLoader
-import wandb  # Import wandb
-
 import os
 from contextlib import nullcontext
+
 import tiktoken
+import torch
 import tqdm
+import transformers
+from dist_dataloader import DistributedDataLoader
+from model import GPT, GPTConfig, MaskConfig
+
+import wandb  # Import wandb
 
 # Initialize wandb
 wandb.init(project="gpt2-rmu", name="gpt2-rmu-1")
 
-path = "model_to_rmu.pt"
+path = "ckpt_last-try-b4-iclr-7_10000.pt"
 
 # -----------------------------------------------------------------------------
 init_from = (
@@ -158,9 +159,9 @@ mask_ids = torch.full((batch_size, T), 1).to(device)  # don't do anything crazy
 
 control_vector = torch.rand(1, 1, n_embd, device=device) * 40
 
-layers_to_rmu_on = [14, 15, 16]
+layers_to_rmu_on = [6, 7, 8, 9]
 layer_to_stop_on = max(layers_to_rmu_on)
-alpha = 150  # just from RMU code
+alpha = 2000
 
 # Log RMU configuration
 wandb.config.update(
@@ -179,7 +180,7 @@ for layer in layers_to_rmu_on:
     for param in model.transformer.h[layer].mlp.c_proj.parameters():
         param.requires_grad = True
 
-for i in (pbar := tqdm.tqdm(range(1000))):
+for i in (pbar := tqdm.tqdm(range(5_000))):
     for grad_accum_step in range(gradient_accumulation_steps):
         x_f, _ = get_batch("forget")
         x_r, _ = get_batch("coherence")

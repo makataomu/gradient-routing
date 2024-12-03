@@ -27,11 +27,16 @@ def get_all_digits(num_images, dataset):
     return [all_images[all_labels == label][:num_images] for label in range(10)]
 
 
-def bulk_plot(image_input, axes, model):
+def bulk_plot(image_input, axes, model, certificate_type: str):
     device = next(model.parameters()).device
+    forward = (
+        model.forward_certificate_top
+        if certificate_type == "top"
+        else model.forward_certificate_bot
+    )
     num_images = image_input.shape[0]
     with torch.no_grad():
-        out_certificate = model.forward_certificate(image_input.to(device))
+        out_certificate = forward(image_input.to(device))
         to_plot = [im.squeeze().cpu().numpy() for im in [image_input, out_certificate]]
 
     labels = ["Image", "Certificate"]

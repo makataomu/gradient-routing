@@ -8,10 +8,10 @@ import projects.tinystories.analysis_tools as atools
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(parent_dir, "data")
+    data_dir = os.path.join(parent_dir, "data_recomputed_era")
     figure_dir = os.path.join(parent_dir, "figures")
 
-    experiment_prefix = "e11_"
+    experiment_prefix = ["e11_", "ejacob_"]
 
     """
     Relearning and basic unlearning results
@@ -70,17 +70,17 @@ if __name__ == "__main__":
     print(f"Based on {num_runs} run sets...")
 
     print("Shallow unlearning - forget loss")
-    compare_metric(["ERAC", "base"], "forget_loss")
+    compare_metric(["ERAC", "base", "demix"], "forget_loss")
     print()
 
     print("Alignment tax - retain loss")
-    compare_metric(["ERAC", "base"], "retain_loss")
+    compare_metric(["ERAC", "base", "demix"], "retain_loss")
     print()
 
     print("Deep unlearning - average minimum forget loss over retraining")
     print()
 
-    relearn_run_types = ["pure", "ERAC", "rmu"]
+    relearn_run_types = ["pure", "ERAC", "rmu", "demix"]
     num_stories_settings = [4, 16, 64]
     df_relearn = df[
         (df.experiment_step == "3. relearning")
@@ -132,41 +132,34 @@ if __name__ == "__main__":
                 "pure": "Pure",
                 "ERAC": "ERA",
                 "rmu": "RMU",
+                "demix": "DEMix",
             }
         )
     )
-    for_paper = for_paper[["Stories", "Pure", "ERA", "RMU"]]
+    for_paper = for_paper[["Stories", "Pure", "ERA", "RMU", "DEMix"]]
     print(for_paper.to_latex(index=False))
 
     """
     Plot
     """
-    colors = {
-        "base": "black",
-        "ERAC": "C4",
-        "pure": "C1",
-        "rmu": "C2",
-    }
+    colors = {"base": "black", **atools.colors}
 
-    linestyles = {
-        "base": "--",
-        "ERAC": "-",
-        "pure": ":",
-        "rmu": "-.",
-    }
+    linestyles = {"base": "--", **atools.linestyles}
 
     labels = {
         "base": "Base",
         "ERAC": "ERA",
         "pure": "Pure",
         "rmu": "RMU",
+        "demix": "DEMix",
     }
 
+    # %%
     num_settings = len(num_stories_settings)
     fig, axes = plt.subplots(
         ncols=num_settings,
         sharey=True,
-        figsize=(num_settings * 2, 2.7),
+        figsize=(num_settings * 2.5, 2.7),
         constrained_layout=True,
         dpi=300,
     )
@@ -215,7 +208,7 @@ if __name__ == "__main__":
     axes[1].set_xlabel("Update step", fontsize=12)
     axes[0].set_ylabel("Validation forget loss", fontsize=12)  # type: ignore
     axes[0].set_ylim(None, 2.5)  # type: ignore
-    axes[-1].legend()  # type: ignore
+    axes[-1].legend(loc="center right", bbox_to_anchor=(1.8, 0.5), fontsize=11)
 
     plt.savefig(os.path.join(figure_dir, "tinystories_relearnability.pdf"))
 
@@ -253,13 +246,21 @@ if __name__ == "__main__":
     ax_erac.set_title("Routing explains ERA's performance")
 
     colors = {"forget": "C3", "retain": "C0"}
+    demix_colors = {"forget": "#FF4D4D", "retain": "#4169E1"}
     linestyles = {"forget": "-", "retain": "--"}
     plt.xticks(fontsize=12)
-    for run_type, ax in zip(["ERAC", "expanded_base"], [ax_erac, ax_erac]):
+    for run_type, ax in zip(["ERAC", "expanded_base"], [ax_erac, ax_erac, ax_erac]):
         for loss_type in ["forget", "retain"]:
             subset = step_agg.run_type == run_type
-            color = colors[loss_type] if run_type == "ERAC" else "black"
+            if run_type == "ERAC":
+                color = colors[loss_type]
+            elif run_type == "demix":
+                color = demix_colors[loss_type]
+            else:
+                color = "black"
+
             mean_loss = step_agg[subset][f"{loss_type}_loss_mean"]
+            print(run_type, loss_type, mean_loss)
             ci_width = step_agg[subset][f"{loss_type}_loss_ci_width"]
             ax.plot(
                 range(3),
@@ -304,7 +305,16 @@ if __name__ == "__main__":
         va="center",
         fontsize=11,
     )
+    ax_erac.annotate(
+        "DEMix",
+        xy=(0.5, get_midpoint_for_annotation("demix")),
+        ha="center",
+        va="center",
+        fontsize=11,
+    )
 
     ax_erac.legend(fontsize=11)
     plt.tight_layout()
     plt.savefig(os.path.join(figure_dir, "tinystories_ablation.pdf"))
+
+# %%

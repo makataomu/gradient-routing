@@ -1,6 +1,7 @@
-from model import GPTConfig, GPT, MaskConfig
-from typing import Tuple, Callable
+from typing import Callable, Tuple
+
 import torch
+from model import GPT, GPTConfig, MaskConfig
 
 
 def load_model_for_inference(
@@ -9,9 +10,10 @@ def load_model_for_inference(
     import os
     import pickle
     from contextlib import nullcontext
+
+    import tiktoken
     import torch
     import transformers
-    import tiktoken
 
     # -----------------------------------------------------------------------------
     init_from = (
@@ -62,9 +64,6 @@ def load_model_for_inference(
             if k.startswith(unwanted_prefix):
                 state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
-    elif init_from.startswith("gpt2"):
-        # init from a given GPT-2 model
-        model = GPT.from_pretrained(init_from, dict(dropout=0.0))
 
     model.eval()
     model.to(device)
@@ -102,5 +101,5 @@ def load_model_for_inference(
             raise ValueError(f"no tokenizer found for {vocab_size=}")
         encode = enc.encode
         decode = enc.decode
-    model.config.l1_coeff = 0.0 # we don't want any l1 loss when doing evals
+    model.config.l1_coeff = 0.0  # we don't want any l1 loss when doing evals
     return model, mask_config, encode, decode, ctx, device

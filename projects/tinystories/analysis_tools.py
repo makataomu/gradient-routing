@@ -30,10 +30,18 @@ agg_fns = ["mean", get_ci_width, q5, q95]
 relearning_variable_cols = ["num_stories", "update_step", "forget_loss", "retain_loss"]
 
 
+def get_relearning_paths(data_dir, experiment_prefix, suffix):
+    if isinstance(experiment_prefix, str):
+        experiment_prefix = [experiment_prefix]
+    to_ret = []
+    for prefix in experiment_prefix:
+        to_ret.extend(glob.glob(os.path.join(data_dir, f"{prefix}*{suffix}")))
+
+    return to_ret
+
+
 def read_relearning_data(data_dir, experiment_prefix):
-    relearning_filepaths = glob.glob(
-        os.path.join(data_dir, f"{experiment_prefix}*.csv")
-    )
+    relearning_filepaths = get_relearning_paths(data_dir, experiment_prefix, ".csv")
     assert (
         len(relearning_filepaths) > 0
     ), f"No files found with prefix {experiment_prefix} in {data_dir}"
@@ -48,8 +56,8 @@ def read_relearning_data(data_dir, experiment_prefix):
 
 
 def read_pre_post_ablation_data(data_dir, experiment_prefix):
-    pre_post_ablation_filepaths = glob.glob(
-        os.path.join(data_dir, f"{experiment_prefix}*.json")
+    pre_post_ablation_filepaths = get_relearning_paths(
+        data_dir, experiment_prefix, ".json"
     )
     print(f"Reading {len(pre_post_ablation_filepaths)} pre/post-ablation JSONs...")
     records = []
@@ -113,6 +121,21 @@ def read_all_data(data_dir, experiment_prefix):
 
     df = pd.concat((df1, df2, df3), ignore_index=True)
     return df
+
+
+colors = {
+    "ERAC": "purple",
+    "pure": "goldenrod",
+    "demix": "green",
+    "rmu": "red",
+}
+linestyles = {"ERAC": "-", "pure": ":", "demix": "-.", "rmu": (0, (3, 1, 1, 1))}
+labels = {
+    "ERAC": "ERA",
+    "demix": "DEMix + ablate",
+    "pure": "Data filtering",
+    "rmu": "RMU",
+}
 
 
 if __name__ == "__main__":
