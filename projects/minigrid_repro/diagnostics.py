@@ -1,5 +1,4 @@
 # %%
-import glob
 import os
 from typing import Optional
 
@@ -9,7 +8,6 @@ from matplotlib.patches import Rectangle
 from PIL import Image
 
 import projects.minigrid_repro.agents as agents
-import projects.minigrid_repro.grid as grid
 from factored_representations.utils import get_gpu_with_most_memory
 
 ACTION_SPACE = t.arange(4).unsqueeze(1)
@@ -18,11 +16,6 @@ AGENT_CHANNEL = 0
 GHOST_CHANNEL = 1
 DIAMOND_CHANNEL = 2
 OVERSIGHT_CHANNEL = 3
-
-
-def sample_obs(n_samples, nrows, ncols, oversight_prob: float, device):
-    env = grid.ContinuingEnv(n_samples, nrows, ncols, 10, oversight_prob, device=device)
-    return env.get_obs()
 
 
 def get_obs_for_all_agent_locs(
