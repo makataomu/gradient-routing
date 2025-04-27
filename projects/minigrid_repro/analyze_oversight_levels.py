@@ -1,7 +1,6 @@
 # type: ignore
 # %%
 import glob
-import math
 import os
 
 import matplotlib.pyplot as plt
@@ -36,8 +35,9 @@ oversight_levels = sorted(eval_res.oversight_prob.unique())
 print(f"{oversight_levels=}")
 
 xticks = oversight_levels
-xticks.remove(0.3)
-xtick_labels = [f"{prob*100:0.1f}".rstrip("0").rstrip(".") for prob in xticks]
+if 0.3 in xticks:
+    xticks.remove(0.3)
+xtick_labels = [f"{prob * 100:0.1f}".rstrip("0").rstrip(".") for prob in xticks]
 xtick_labels[-1] = ""
 
 is_routing = eval_res.run_label == "routing"
