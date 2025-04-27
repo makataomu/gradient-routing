@@ -182,6 +182,10 @@ def train(
     gpus_to_restrict_to: Optional[list[int]] = None,
     run_id: Optional[Union[str, int]] = None,
     time_to_sleep_after_run=0,
+    # Early stopping parameters
+    early_stop_after: int = 800,
+    early_stop_threshold: float = 0.06,
+    early_stop_patience: int = 400,
 ):
     assert 0 <= discount <= 1
     assert "device" not in env_kwargs, "pass device separately"
@@ -218,6 +222,7 @@ def train(
         shared_params = list(policy.parameters())
 
     value_params = list(value_fn.parameters())  # type: ignore
+
     optimizer = t.optim.Adam(
         [
             {"params": expert_params, "weight_decay": expert_weight_decay},
@@ -236,6 +241,11 @@ def train(
     if hasattr(policy, "get_diamond_policy"):
         eval_policies["diamond"] = policy.get_diamond_policy()  # type: ignore
         eval_policies["ghost"] = policy.get_ghost_policy()  # type: ignore
+
+    # Early stopping trackers
+    best_return = None
+    no_improve = 0
+    stop_training = False
 
     global_step = 0
     for update_idx in tqdm.trange(num_learning_updates):
@@ -285,10 +295,29 @@ def train(
                     discount,
                     device,
                 )
+                # Append eval metrics
                 eval_metrics["update_idx"].append(update_idx)
                 eval_metrics["policy_type"].append(policy_label)
                 for key, val in eval_dict.items():
                     eval_metrics[key].append(val)
+
+                # Early stopping logic on ground-truth return
+                if update_idx >= early_stop_after and policy_label == "training_policy":
+                    current = eval_dict["avg_return"]
+                    if best_return is None:
+                        best_return = current
+                    elif abs(current - best_return) <= early_stop_threshold:
+                        no_improve += 1
+                    else:
+                        best_return = current
+                        no_improve = 0
+                    if no_improve >= early_stop_patience:
+                        print(
+                            f"Early stopping at update {update_idx} (return≈{current:.3f})"
+                        )
+                        stop_training = True
+            if stop_training:
+                break
 
         if update_idx % policy_log_freq == 0 or is_final_step:
             if type(policy) is agents.RoutedPolicyNetwork:
