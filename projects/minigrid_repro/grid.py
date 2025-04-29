@@ -5,7 +5,7 @@ import torch
 
 
 @torch.jit.script
-class ContinuingEnv:
+class ContinuingEnv:  # все же у нас не дискретное
     def __init__(
         self,
         n_envs: int,
@@ -13,7 +13,7 @@ class ContinuingEnv:
         ncols: int,
         max_step: int,
         oversight_prob: float,
-        spurious_oversight_prob: float,
+        spurious_oversight_prob: float,  # это 0
         device: torch.device = torch.device("cuda"),
     ):
         self.n_envs = n_envs

@@ -52,7 +52,7 @@ if __name__ == "__main__":
         "gate_loss_no_oversight": 0,
     }
 
-    num_envs = 512
+    num_envs = 64
     num_learning_updates = 20000
 
     env_kwargs = dict(
@@ -97,6 +97,7 @@ if __name__ == "__main__":
     }
 
     oversight_probs = [0.001, 0.05, 0.1, 0.3]
+    oversight_probs = [0.05]
     run_types = ["routing"]
 
     training_kwargs_list = []
