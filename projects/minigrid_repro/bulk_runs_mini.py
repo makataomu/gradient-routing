@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     oversight_probs = [0.001, 0.05, 0.1, 0.3]
     oversight_probs = [0.8]
-    run_types = ["routing"]
+    run_types = ["naive"]
     print(run_types, oversight_probs, num_envs)
 
     training_kwargs_list = []

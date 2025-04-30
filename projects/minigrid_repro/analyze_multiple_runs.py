@@ -17,6 +17,7 @@ os.makedirs(figures_dir, exist_ok=True)
 experiment_name = "oversight_levels"
 custom_description = ""
 subset_to_oversight = 0.8
+training_method = 'naive'
 
 description = custom_description if custom_description else experiment_name
 
@@ -79,7 +80,7 @@ for run_label in eval_res.run_label.unique():
     )
 ax.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", fontsize=fontsize - 1)
 ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-plt.savefig(os.path.join(figures_dir, f"rl_learning_curves_{oversight_percent}.pdf"), bbox_inches="tight")
+plt.savefig(os.path.join(figures_dir, f"rl_learning_curves_{training_method}_{oversight_percent}.pdf"), bbox_inches="tight")
 
 # %%
 n_runs = len(eval_res.run_id.unique())
@@ -117,4 +118,4 @@ a_utils.gplot(
 ax_train.legend()
 ax_eval.legend()
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, f"rl_idk_{oversight_percent}.pdf"), bbox_inches="tight")
+plt.savefig(os.path.join(figures_dir, f"rl_idk_{training_method}_{oversight_percent}.pdf"), bbox_inches="tight")
