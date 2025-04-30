@@ -9,11 +9,11 @@ class ContinuingEnv:  # все же у нас не дискретное
     def __init__(
         self,
         n_envs: int,
-        nrows: int,
+        nrows: int,  # size of grid
         ncols: int,
-        max_step: int,
+        max_step: int,  # макс кол-во шагов в эпизоде
         oversight_prob: float,
-        spurious_oversight_prob: float,  # это 0
+        spurious_oversight_prob: float,  # это 0. чт такое spurious oversight
         device: torch.device = torch.device("cuda"),
     ):
         self.n_envs = n_envs
@@ -45,6 +45,7 @@ class ContinuingEnv:  # все же у нас не дискретное
         return self.get_obs(), {}
 
     def is_diamond_optimal(self):
+        # исп-ся при логировании (гпт), чтобы потом оценивать агента
         dist_to_diamond = torch.abs(self.agent_locs - self.diamond_locs).sum(dim=1)
         dist_to_ghost = torch.abs(self.agent_locs - self.ghost_locs).sum(dim=1)
         return (dist_to_diamond < dist_to_ghost) + 0.5 * (
@@ -69,6 +70,7 @@ class ContinuingEnv:  # все же у нас не дискретное
     def step(
         self, actions: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
+        # moves agents according to actions
         is_diamond_optimal_before_action = self.is_diamond_optimal()
 
         # Move agents

@@ -46,6 +46,7 @@ class PolicyNetwork(nn.Module):
         return action
 
     def get_action_logprobs(self, obs_stack: t.Tensor, actions: t.Tensor):
+        # Computes log-probs and entropy for a batch of actions; used in policy gradient losses.
         logits = self.get_action_logits(obs_stack)
         dist = t.distributions.Categorical(logits=logits)
         logprobs = dist.log_prob(actions)
@@ -64,6 +65,7 @@ class PolicyWrapper(PolicyNetwork):
 
 
 class ValueNetwork(nn.Module):
+    # Used to compute the baseline in REINFORCE.
     def __init__(self, obs_dim):
         super(ValueNetwork, self).__init__()
         self.neural_net = nn.Sequential(
@@ -79,6 +81,8 @@ class ValueNetwork(nn.Module):
 
 
 class ConstantGate(nn.Module):
+    """Used when disabling gating in the MoE. ​each 0.5"""
+
     def __init__(self):
         super().__init__()
         self.fake_param = nn.Parameter(t.tensor(0.0))
@@ -127,6 +131,7 @@ class RoutedPolicyNetwork(PolicyNetwork):
         self.use_gradient_routing = use_gradient_routing
 
     def forward(self, x):
+        """Runs all three sub-nets in parallel."""
         inp_enc = self.shared_input(x)
         diamond_out = self.diamond_expert(inp_enc)
         ghost_out = self.ghost_expert(inp_enc)
@@ -139,6 +144,7 @@ class RoutedPolicyNetwork(PolicyNetwork):
         return gate_prob * diamond_out + (1 - gate_prob) * ghost_out
 
     def get_action_logits(self, obs_stack: t.Tensor):
+        """Final logits come from passing the mixture through shared_output."""
         diamond_out, ghost_out, gate_out = self.forward(obs_stack)
         weighted_out = self._combine_experts(diamond_out, ghost_out, gate_out)
         logits = self.shared_output(weighted_out)
