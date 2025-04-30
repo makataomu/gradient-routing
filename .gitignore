@@ -1,12 +1,12 @@
 **/__pycache__/*
 *.onnx
 *.pt/
-# *.pth
+*.pth
 wandb/
 **/wandb/
 .pdm-python
-# *.csv
-# *.pkl
+*.csv
+*.pkl
 # *.jsonl
 .DS_Store
 # *.gif
