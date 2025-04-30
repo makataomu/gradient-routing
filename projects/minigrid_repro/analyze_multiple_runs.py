@@ -16,7 +16,7 @@ os.makedirs(figures_dir, exist_ok=True)
 
 experiment_name = "oversight_levels"
 custom_description = ""
-subset_to_oversight = 0.1
+subset_to_oversight = 0.8
 
 description = custom_description if custom_description else experiment_name
 
