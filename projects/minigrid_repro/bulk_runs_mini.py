@@ -9,6 +9,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from functools import partial
 
+import torch.multiprocessing as mp
+
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.training as training
 from factored_representations.utils import Timer
@@ -18,6 +20,21 @@ $(pdm venv activate) && python projects/minigrid_repro/bulk_runs.py
 """
 
 if __name__ == "__main__":
+    try:
+        # Set the start method to 'spawn'. This is necessary for PyTorch/CUDA
+        # when using multiprocessing on systems (like default Linux/Kaggle)
+        # where the default is 'fork'.
+        mp.set_start_method("spawn")
+        print("Multiprocessing start method set to 'spawn'.")
+    except RuntimeError:
+        # start_method can only be set once per process.
+        # This might happen if your environment or another library
+        # has already set it. You might want to check if it's
+        # already 'spawn' if you hit this.
+        # For most cases, just passing is fine.
+        print("Multiprocessing start method already set.")
+        pass  # Or handle the error if needed
+
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
     policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
