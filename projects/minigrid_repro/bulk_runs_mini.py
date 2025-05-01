@@ -1,4 +1,5 @@
 # %%
+import argparse
 import glob
 import math
 import os
@@ -21,6 +22,29 @@ if __name__ == "__main__":
     data_dir = os.path.join(parent_dir, "data")
     policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+    parser.add_argument("--num_envs", type=int, default=512)
+    parser.add_argument("--num_learning_updates", type=int, default=20000)
+    parser.add_argument(
+        "--run_types",
+        nargs="+",
+        default=["routing", "oracle", "filtering", "naive_outcomes"],
+    )
+    parser.add_argument(
+        "--oversight_probs",
+        nargs="+",
+        type=float,
+        default=[0.003, 0.01, 0.025, 0.03, 0.05, 0.1],
+    )
+    args = parser.parse_args()
+
+    experiment_name = args.experiment_name
+    num_envs = args.num_envs
+    num_learning_updates = args.num_learning_updates
+    run_types = args.run_types
+    oversight_probs = args.oversight_probs
+
     to_remove = {
         data_dir: ["*.csv", "*.pt"],
         policy_visualization_dir: ["*.png", "*.gif"],
@@ -29,7 +53,6 @@ if __name__ == "__main__":
     # BULK RUN SETTINGS
     num_parallel_runs = 4
     num_iterates = defaultdict(lambda: 1)
-    experiment_name = "oversight_levels"
 
     overwrite = False
     if overwrite:
@@ -51,9 +74,6 @@ if __name__ == "__main__":
         "gate_loss": 0.01,
         "gate_loss_no_oversight": 0,
     }
-
-    num_envs = 512
-    num_learning_updates = 20000
 
     env_kwargs = dict(
         n_envs=num_envs,
@@ -96,9 +116,6 @@ if __name__ == "__main__":
         ),
     }
 
-    oversight_probs = [0.001, 0.05, 0.1, 0.3]
-    oversight_probs = [0.8]
-    run_types = ["naive_outcomes"]
     print(run_types, oversight_probs, num_envs)
 
     training_kwargs_list = []

@@ -1,6 +1,6 @@
 # %%
+import argparse
 import glob
-import math
 import os
 
 import matplotlib.pyplot as plt
@@ -14,10 +14,17 @@ figures_dir = os.path.join(parent_dir, "figures")
 
 os.makedirs(figures_dir, exist_ok=True)
 
-experiment_name = "oversight_levels"
 custom_description = ""
-subset_to_oversight = 0.8
-training_method = 'naive'
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+parser.add_argument("--subset_to_oversight", type=float, default=0.1)
+parser.add_argument("--training_method", type=str, default="routing")
+args = parser.parse_args()
+
+experiment_name = args.experiment_name
+subset_to_oversight = args.subset_to_oversight
+training_method = args.training_method
 
 description = custom_description if custom_description else experiment_name
 
@@ -61,7 +68,9 @@ fontsize = 12
 ax.set_xlabel("Update step", fontsize=fontsize)
 ax.set_ylabel("Ground truth return", fontsize=fontsize)
 oversight_percent = subset_to_oversight * 100
-ax.set_title(f"Learning curves at {oversight_percent}% oversight", fontsize=fontsize + 1)
+ax.set_title(
+    f"Learning curves at {oversight_percent}% oversight", fontsize=fontsize + 1
+)
 
 for run_label in eval_res.run_label.unique():
     subset = eval_res[eval_res.run_label == run_label]
@@ -80,7 +89,12 @@ for run_label in eval_res.run_label.unique():
     )
 ax.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", fontsize=fontsize - 1)
 ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-plt.savefig(os.path.join(figures_dir, f"rl_learning_curves_{training_method}_{oversight_percent}.pdf"), bbox_inches="tight")
+plt.savefig(
+    os.path.join(
+        figures_dir, f"rl_learning_curves_{training_method}_{oversight_percent}.pdf"
+    ),
+    bbox_inches="tight",
+)
 
 # %%
 n_runs = len(eval_res.run_id.unique())
@@ -118,4 +132,7 @@ a_utils.gplot(
 ax_train.legend()
 ax_eval.legend()
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, f"rl_idk_{training_method}_{oversight_percent}.pdf"), bbox_inches="tight")
+plt.savefig(
+    os.path.join(figures_dir, f"rl_idk_{training_method}_{oversight_percent}.pdf"),
+    bbox_inches="tight",
+)
