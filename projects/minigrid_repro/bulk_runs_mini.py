@@ -43,6 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", type=str, default="oversight_levels")
     parser.add_argument("--num_envs", type=int, default=512)
     parser.add_argument("--num_learning_updates", type=int, default=20000)
+    parser.add_argument("--early_stop", type=bool, default=True)
     parser.add_argument(
         "--run_types",
         nargs="+",
@@ -61,6 +62,7 @@ if __name__ == "__main__":
     num_learning_updates = args.num_learning_updates
     run_types = args.run_types
     oversight_probs = args.oversight_probs
+    early_stop = args.early_stop
 
     to_remove = {
         data_dir: ["*.csv", "*.pt"],
@@ -179,7 +181,7 @@ if __name__ == "__main__":
     timer = Timer(num_tasks=len(training_kwargs_list))
     if num_parallel_runs == 1:
         for training_kwargs in training_kwargs_list:
-            training.train(**training_kwargs)  # type: ignore
+            training.train(**training_kwargs, early_stop=early_stop)  # type: ignore
             timer.increment()
     else:
         futures = []
@@ -190,6 +192,7 @@ if __name__ == "__main__":
                     training.train,
                     time_to_sleep_after_run=2,
                     **training_kwargs,  # type: ignore
+                    early_stop=early_stop,
                 )
                 futures.append(future)
 
