@@ -183,7 +183,7 @@ def train(
     run_id: Optional[Union[str, int]] = None,
     time_to_sleep_after_run=0,
     # Early stopping parameters
-    early_stop: bool = True,
+    early_stop: bool = False,
     early_stop_after: int = 800,
     early_stop_threshold: float = 0.06,
     early_stop_patience: int = 400,
