@@ -305,16 +305,25 @@ def train(
                 # Early stopping logic on ground-truth return
                 if update_idx >= early_stop_after and policy_label == "training_policy":
                     current = eval_dict["avg_return"]
+
                     if best_return is None:
                         best_return = current
-                    elif abs(current - best_return) <= early_stop_threshold:
-                        no_improve += 1
-                    else:
+                        no_improve = 0  # Or keep at 0, depending on whether first eval counts as "0 improvements"
+                    elif current > best_return + early_stop_threshold:
+                        # Significant improvement found
+                        print(
+                            f"Update {update_idx}: New best return {current:.3f} (was {best_return:.3f if best_return is not None else 'None'}). Resetting patience."
+                        )  # Optional: Add print for clarity
                         best_return = current
-                        no_improve = 0
+                        no_improve = 0  # Reset patience counter
+                    else:
+                        # No significant improvement compared to best_return
+                        no_improve += 1
+                        # Optional: Add print(f"Update {update_idx}: Return {current:.3f} (best {best_return:.3f}). Patience {no_improve}/{early_stop_patience}")
+
                     if no_improve >= early_stop_patience:
                         print(
-                            f"Early stopping at update {update_idx} (return≈{current:.3f})"
+                            f"Early stopping at update {update_idx} (return≈{current:.3f}) - No significant improvement for {early_stop_patience} evaluations."
                         )
                         stop_training = True
             if early_stop and stop_training:
