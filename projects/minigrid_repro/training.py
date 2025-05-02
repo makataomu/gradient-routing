@@ -183,6 +183,7 @@ def train(
     run_id: Optional[Union[str, int]] = None,
     time_to_sleep_after_run=0,
     # Early stopping parameters
+    early_stop: bool = True,
     early_stop_after: int = 800,
     early_stop_threshold: float = 0.06,
     early_stop_patience: int = 400,
@@ -316,7 +317,7 @@ def train(
                             f"Early stopping at update {update_idx} (return≈{current:.3f})"
                         )
                         stop_training = True
-            if stop_training:
+            if early_stop and stop_training:
                 break
 
         if update_idx % policy_log_freq == 0 or is_final_step:
