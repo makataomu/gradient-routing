@@ -72,6 +72,12 @@ if __name__ == "__main__":
         default=True,
         help="Whether to use early stopping (True or False)",
     )
+    parser.add_argument(
+        "--debug_mode",
+        type=str2bool,
+        default=True,
+        help="Whether to use debug_mode (True or False)",
+    )
     # NEW flags for K experiments
     parser.add_argument(
         "--K",
@@ -156,6 +162,7 @@ if __name__ == "__main__":
     run_types = args.run_types
     oversight_probs = args.oversight_probs
     early_stop = args.early_stop
+    debug_mode = args.debug_mode
 
     to_remove = {
         data_dir: ["*.csv", "*.pt"],
@@ -278,6 +285,7 @@ if __name__ == "__main__":
                     anneal_T=anneal_T,
                     norm_rewards=norm_rewards,
                     norm_window=norm_window,
+                    debug_mode=debug_mode,
                 )
             )
             for _ in range(num_iterates[run_type]):
