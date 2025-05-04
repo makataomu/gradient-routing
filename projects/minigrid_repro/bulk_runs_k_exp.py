@@ -289,7 +289,7 @@ if __name__ == "__main__":
     timer = Timer(num_tasks=len(training_kwargs_list))
     if num_parallel_runs == 1:
         for training_kwargs in training_kwargs_list:
-            training.train(**training_kwargs, early_stop=early_stop)  # type: ignore
+            training.train(**training_kwargs)  # type: ignore
             timer.increment()
     else:
         futures = []
@@ -300,7 +300,6 @@ if __name__ == "__main__":
                     training.train,
                     time_to_sleep_after_run=2,
                     **training_kwargs,  # type: ignore
-                    early_stop=early_stop,
                 )
                 futures.append(future)
 
