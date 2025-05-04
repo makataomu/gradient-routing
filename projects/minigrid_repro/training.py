@@ -311,9 +311,12 @@ def train(
                         no_improve = 0  # Or keep at 0, depending on whether first eval counts as "0 improvements"
                     elif current > best_return + early_stop_threshold:
                         # Significant improvement found
+                        old_str = (
+                            f"{best_return:.3f}" if best_return is not None else "None"
+                        )
                         print(
-                            f"Update {update_idx}: New best return {current:.3f} (was {best_return:.3f if best_return is not None else 'None'}). Resetting patience."
-                        )  # Optional: Add print for clarity
+                            f"Update {update_idx}: New best return {current:.3f} (was {old_str}). Resetting patience."
+                        )
                         best_return = current
                         no_improve = 0  # Reset patience counter
                     else:
