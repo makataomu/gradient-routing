@@ -188,12 +188,14 @@ def train(
     early_stop_threshold: float = 0.06,
     early_stop_patience: int = 400,
 ):
-    assert early_stop is False
+    # assert early_stop is False
 
     assert 0 <= discount <= 1
     assert "device" not in env_kwargs, "pass device separately"
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(policy_visualization_dir, exist_ok=True)
+
+    print("early stop is ", early_stop)
 
     pid = os.getpid()
     seed = int(time.time()) + pid
