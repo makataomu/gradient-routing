@@ -15,6 +15,17 @@ import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.training as training
 from factored_representations.utils import Timer
 
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "1"):
+        return True
+    if v.lower() in ("no", "false", "f", "0"):
+        return False
+    raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
 """
 $(pdm venv activate) && python projects/minigrid_repro/bulk_runs.py
 """
@@ -43,7 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", type=str, default="oversight_levels")
     parser.add_argument("--num_envs", type=int, default=512)
     parser.add_argument("--num_learning_updates", type=int, default=20000)
-    parser.add_argument("--early_stop", type=bool, default=True)
+    # parser.add_argument("--early_stop", type=bool, default=True)
     parser.add_argument(
         "--run_types",
         nargs="+",
@@ -54,6 +65,12 @@ if __name__ == "__main__":
         nargs="+",
         type=float,
         default=[0.003, 0.01, 0.025, 0.03, 0.05, 0.1],
+    )
+    parser.add_argument(
+        "--early_stop",
+        type=str2bool,
+        default=True,
+        help="Whether to use early stopping (True or False)",
     )
     args = parser.parse_args()
 
