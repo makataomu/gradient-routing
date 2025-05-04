@@ -188,6 +188,8 @@ def train(
     early_stop_threshold: float = 0.06,
     early_stop_patience: int = 400,
 ):
+    assert early_stop is False
+
     assert 0 <= discount <= 1
     assert "device" not in env_kwargs, "pass device separately"
     os.makedirs(save_dir, exist_ok=True)
