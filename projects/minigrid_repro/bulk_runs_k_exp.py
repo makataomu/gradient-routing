@@ -75,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug_mode",
         type=str2bool,
-        default=True,
+        default=False,
         help="Whether to use debug_mode (True or False)",
     )
     # NEW flags for K experiments
