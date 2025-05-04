@@ -237,6 +237,9 @@ if __name__ == "__main__":
 
     print(run_types, oversight_probs, num_envs)
 
+    if debug_mode:
+        num_learning_updates = 5
+
     training_kwargs_list = []
     for oversight_prob in oversight_probs:
         for run_type in run_types:
@@ -285,7 +288,6 @@ if __name__ == "__main__":
                     anneal_T=anneal_T,
                     norm_rewards=norm_rewards,
                     norm_window=norm_window,
-                    debug_mode=debug_mode,
                 )
             )
             for _ in range(num_iterates[run_type]):

@@ -199,7 +199,6 @@ def train(
     anneal_T: int = 100000,
     norm_rewards: bool = False,
     norm_window: int = 1000,
-    debug_mode: bool = False,
 ):
     # assert early_stop is False
 
@@ -376,7 +375,7 @@ def train(
                             f"Early stopping at update {update_idx} (return≈{current:.3f}) - No significant improvement for {early_stop_patience} evaluations."
                         )
                         stop_training = True
-            if (early_stop and stop_training) or debug_mode:
+            if early_stop and stop_training:
                 break
 
         if update_idx % policy_log_freq == 0 or is_final_step:
