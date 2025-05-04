@@ -51,7 +51,7 @@ if __name__ == "__main__":
     policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+    parser.add_argument("--experiment_name", type=str, default="k_values")
     parser.add_argument("--num_envs", type=int, default=512)
     parser.add_argument("--num_learning_updates", type=int, default=20000)
     # parser.add_argument("--early_stop", type=bool, default=True)
