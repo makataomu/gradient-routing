@@ -3,10 +3,9 @@ import argparse
 import glob
 import os
 
+import analysis_utils as a_utils
 import matplotlib.pyplot as plt
 import pandas as pd
-
-import projects.minigrid_repro.analysis_utils as a_utils
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
@@ -18,7 +17,7 @@ custom_description = ""
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, default="oversight_levels")
-parser.add_argument("--subset_to_oversight", type=float, default=0.1)
+parser.add_argument("--subset_to_oversight", type=float, default=0.01)
 parser.add_argument("--training_method", type=str, default="routing")
 args = parser.parse_args()
 

@@ -3,10 +3,9 @@
 import glob
 import os
 
+import analysis_utils as a_utils
 import matplotlib.pyplot as plt
 import pandas as pd
-
-import projects.minigrid_repro.analysis_utils as a_utils
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
@@ -14,7 +13,7 @@ figures_dir = os.path.join(parent_dir, "figures")
 
 os.makedirs(figures_dir, exist_ok=True)
 
-experiment_name = "oversight_levels"
+experiment_name = "oversight_full"
 custom_description = ""
 
 description = custom_description if custom_description else experiment_name
@@ -66,7 +65,7 @@ ax.set_xlabel("Oversight level (%)", fontsize=fontsize)
 ax.set_ylabel("Ground truth return", fontsize=fontsize)
 ax.set_title("Algorithm performance", fontsize=fontsize + 1)
 
-for run_label in ["routing", "filtering", "naive_outcomes"]:
+for run_label in ["routing", "filtering", "naive_outcomes", "oracle"]:
     subset = final_steps[final_steps.run_label == run_label]
     a_utils.plot_line(
         subset,
