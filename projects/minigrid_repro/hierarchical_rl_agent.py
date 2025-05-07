@@ -5,11 +5,9 @@ from datetime import datetime
 import pandas as pd
 import torch
 import torch.optim as optim
-from agents import MLP, PolicyNetwork, reset_params
-from grid import ContinuingEnv
 
-# from projects.minigrid_repro.agents import MLP, PolicyNetwork, reset_params
-# from projects.minigrid_repro.grid import ContinuingEnv
+from projects.minigrid_repro.agents import MLP, PolicyNetwork, reset_params
+from projects.minigrid_repro.grid import ContinuingEnv
 
 # Hierarchical RL Agent for 5×5 GridWorld (diamond vs. ghost)
 # High-level action: 0 = target DIAMOND, 1 = target GHOST
