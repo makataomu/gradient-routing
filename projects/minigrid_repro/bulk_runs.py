@@ -8,6 +8,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from functools import partial
 
+import torch.multiprocessing as mp
+
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.training as training
 from factored_representations.utils import Timer
@@ -17,6 +19,13 @@ $(pdm venv activate) && python projects/minigrid_repro/bulk_runs.py
 """
 
 if __name__ == "__main__":
+    try:
+        mp.set_start_method("spawn")
+        print("Multiprocessing start method set to 'spawn'.")
+    except RuntimeError:
+        print("Multiprocessing start method already set.")
+        pass
+
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
     policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
@@ -27,8 +36,8 @@ if __name__ == "__main__":
     }
 
     # BULK RUN SETTINGS
-    num_parallel_runs = 8
-    num_iterates = defaultdict(lambda: 4)
+    num_parallel_runs = 4
+    num_iterates = defaultdict(lambda: 1)
     experiment_name = "oversight_levels"
 
     overwrite = False
