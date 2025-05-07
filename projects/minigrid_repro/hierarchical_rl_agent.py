@@ -1,9 +1,15 @@
 import math
+import os
+from datetime import datetime
 
+import pandas as pd
 import torch
 import torch.optim as optim
 from agents import MLP, PolicyNetwork, reset_params
 from grid import ContinuingEnv
+
+# from projects.minigrid_repro.agents import MLP, PolicyNetwork, reset_params
+# from projects.minigrid_repro.grid import ContinuingEnv
 
 # Hierarchical RL Agent for 5×5 GridWorld (diamond vs. ghost)
 # High-level action: 0 = target DIAMOND, 1 = target GHOST
@@ -28,7 +34,16 @@ class LLPolicy(PolicyNetwork):
 
 
 class HierarchicalAgent:
-    def __init__(self, oversight_prob: float, device=None):
+    def __init__(
+        self, oversight_prob: float, run_label="HierUCBVI", save_dir="logs", device=None
+    ):
+        self.oversight_prob = oversight_prob
+        self.run_label = run_label
+        self.save_dir = save_dir
+        self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        os.makedirs(self.save_dir, exist_ok=True)
+
         # single-env setup
         self.env_kwargs = dict(
             n_envs=1,
@@ -67,7 +82,8 @@ class HierarchicalAgent:
                 best = a
         return best
 
-    def train(self, episodes=20000, eval_interval=1000, lr=1e-3):
+    def train(self, episodes=2000, eval_interval=500, lr=1e-3):
+        eval_metrics = []
         for ep in range(1, episodes + 1):
             self.total_visits += 1
             # new episode, random diamond/ghost positions
@@ -135,11 +151,19 @@ class HierarchicalAgent:
                 self.eval_episodes.append(ep)
                 self.eval_returns.append(avg_ret)
                 print(f"Episode {ep:5d} | Eval avg return: {avg_ret:.3f}")
+                eval_metrics.append({"update_idx": ep, "eval_avg_return": avg_ret})
 
         print("\n=== Training complete ===")
         print(
             f"Final ground-truth return @ episode {self.eval_episodes[-1]}: {self.eval_returns[-1]:.3f}"
         )
+
+        # Save eval results
+        eval_df = pd.DataFrame(eval_metrics).set_index("update_idx")
+        eval_df["run_id"] = self.run_id
+        eval_df.insert(0, "run_label", self.run_label)
+        eval_df.insert(1, "oversight_prob", self.oversight_prob)
+        eval_df.to_csv(os.path.join(self.save_dir, f"eval_results_{self.run_id}.csv"))
 
     def evaluate(self, runs=512):
         total = 0.0
@@ -172,8 +196,15 @@ class HierarchicalAgent:
 
 # usage:
 # if __name__ == "__main__":
-#     agent = HierarchicalAgent(oversight_prob=0.1, device=torch.device("cpu"))
-#     agent.train(episodes=10, eval_interval=1)
+#     parent_dir = os.path.dirname(os.path.abspath(__file__))
+#     data_dir = os.path.join(parent_dir, "data")
+#     experiment_name = "oversight_levels"
+#     agent = HierarchicalAgent(
+#         oversight_prob=0.1,
+#         device=torch.device("cpu"),
+#         save_dir=os.path.join(data_dir, experiment_name),
+#     )
+#     agent.train(episodes=1, eval_interval=1)
 
 #     # plot learning curve
 #     plt.plot(agent.eval_episodes, agent.eval_returns, marker="o")

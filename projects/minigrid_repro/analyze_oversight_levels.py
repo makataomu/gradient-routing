@@ -66,7 +66,7 @@ ax.set_xlabel("Oversight level (%)", fontsize=fontsize)
 ax.set_ylabel("Ground truth return", fontsize=fontsize)
 ax.set_title("Algorithm performance", fontsize=fontsize + 1)
 
-for run_label in ["routing", "filtering", "naive_outcomes"]:
+for run_label in ["routing", "HierUCBVI", "naive_outcomes"]:
     subset = final_steps[final_steps.run_label == run_label]
     a_utils.plot_line(
         subset,

@@ -11,7 +11,7 @@ preset_linestyles = {"mixture": "-", "ghost": "--", "diamond": ":"}
 
 method_colors = {
     "oracle": "grey",
-    "filtering": "C1",
+    "HierUCBVI": "C1",
     "naive_outcomes": "C2",
     "routing": "C4",
     "no_routing_control": "C5",
@@ -20,7 +20,7 @@ method_colors = {
 
 method_linestyles = {
     "oracle": ":",
-    "filtering": "--",
+    "HierUCBVI": "--",
     "naive_outcomes": "-.",
     "routing": "-",
     "no_routing_control": ":",
@@ -28,8 +28,8 @@ method_linestyles = {
 }
 
 method_labels = {
-    "oracle": "Oracle filtering",
-    "filtering": "Data filtering",
+    "oracle": "Oracle HierUCBVI",
+    "HierUCBVI": "Data HierUCBVI",
     "naive_outcomes": "Naive training",
     "routing": "Gradient-routed MoE",
     "no_routing_control": "MoE w/o routing",
@@ -113,7 +113,7 @@ def plot_line(df, x, y, smooth, ax, **kwargs):
 
 def reindex_oracle(df):
     """
-    For oracle filtering, we re-index to simulate having filtered a
+    For oracle HierUCBVI, we re-index to simulate having filtered a
     larger dataset.
     """
     is_oracle = df.run_label == "oracle"
