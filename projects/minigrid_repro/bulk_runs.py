@@ -39,9 +39,9 @@ if __name__ == "__main__":
                     os.path.join(dirname, experiment_name, pattern)
                 )
                 if pattern == "*.csv":
-                    assert (
-                        len(matching_paths) < 20
-                    ), "Are you sure you want to delete 20+ files?"
+                    assert len(matching_paths) < 20, (
+                        "Are you sure you want to delete 20+ files?"
+                    )
                 for path in matching_paths:
                     os.remove(path)
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     }
 
     num_envs = 512
-    num_learning_updates = 20000
+    num_learning_updates = 2000
 
     env_kwargs = dict(
         n_envs=num_envs,
@@ -96,8 +96,8 @@ if __name__ == "__main__":
         ),
     }
 
-    oversight_probs = [0.003, 0.01, 0.025, 0.03, 0.05, 0.1]  # , 0.2, 0.3, 0.4, 0.8]
-    run_types = ["routing", "oracle", "filtering", "naive_outcomes"]
+    oversight_probs = [0.003, 0.01, 0.05, 0.25, 0.5, 0.75]
+    run_types = ["routing"]
 
     training_kwargs_list = []
     for oversight_prob in oversight_probs:
