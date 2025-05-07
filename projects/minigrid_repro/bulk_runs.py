@@ -96,7 +96,7 @@ if __name__ == "__main__":
         ),
     }
 
-    oversight_probs = [0.003, 0.01, 0.05, 0.25, 0.5, 0.75]
+    oversight_probs = [0.01, 0.05, 0.25, 0.5]
     run_types = ["routing"]
 
     training_kwargs_list = []
