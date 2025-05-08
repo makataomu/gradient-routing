@@ -53,7 +53,7 @@ if __name__ == "__main__":
     }
 
     num_envs = 512
-    num_learning_updates = 20000
+    num_learning_updates = 10000
 
     env_kwargs = dict(
         n_envs=num_envs,
