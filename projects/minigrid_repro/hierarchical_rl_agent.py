@@ -5,9 +5,11 @@ from datetime import datetime
 import pandas as pd
 import torch
 import torch.optim as optim
+from agents import MLP, PolicyNetwork, reset_params
+from grid import ContinuingEnv
 
-from projects.minigrid_repro.agents import MLP, PolicyNetwork, reset_params
-from projects.minigrid_repro.grid import ContinuingEnv
+# from projects.minigrid_repro.agents import MLP, PolicyNetwork, reset_params
+# from projects.minigrid_repro.grid import ContinuingEnv
 
 # Hierarchical RL Agent for 5×5 GridWorld (diamond vs. ghost)
 # High-level action: 0 = target DIAMOND, 1 = target GHOST
@@ -193,21 +195,13 @@ class HierarchicalAgent:
 
 
 # usage:
-# if __name__ == "__main__":
-#     parent_dir = os.path.dirname(os.path.abspath(__file__))
-#     data_dir = os.path.join(parent_dir, "data")
-#     experiment_name = "oversight_levels"
-#     agent = HierarchicalAgent(
-#         oversight_prob=0.1,
-#         device=torch.device("cpu"),
-#         save_dir=os.path.join(data_dir, experiment_name),
-#     )
-#     agent.train(episodes=1, eval_interval=1)
-
-#     # plot learning curve
-#     plt.plot(agent.eval_episodes, agent.eval_returns, marker="o")
-#     plt.xlabel("Episode")
-#     plt.ylabel("Eval ground-truth return")
-#     plt.title("Hier-UCB-VI Learning Curve")
-#     plt.grid(True)
-#     plt.show()
+if __name__ == "__main__":
+    parent_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(parent_dir, "data")
+    experiment_name = "oversight_levels"
+    agent = HierarchicalAgent(
+        oversight_prob=0.3,
+        device=torch.device("cpu"),
+        save_dir=os.path.join(data_dir, experiment_name),
+    )
+    agent.train(episodes=2000, eval_interval=5)
