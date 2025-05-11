@@ -29,7 +29,7 @@ def parse_args():
     )
     p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
-    p.add_argument("--num_parallel", type=int, default=4)
+    p.add_argument("--num_iterates", type=int, default=4)
     return p.parse_args()
 
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     # BULK RUN SETTINGS
     num_parallel_runs = 8
-    num_iterates = defaultdict(lambda: 2)
+    num_iterates = defaultdict(lambda: args.num_iterates)
     experiment_name = "oversight_levels"
 
     overwrite = False
