@@ -97,12 +97,13 @@ def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1):
 
 def plot_line(df, x: str, y: str, smooth: int, ax=None, **kwargs):
     """
-    Group‐by x, aggregate y with mean±CI via named aggregation, then plot.
+    Group‐by x, aggregate y with mean±CI, then plot.
+    kwargs may include 'color' or 'c', 'ls', 'marker', 'markersize', etc.
     """
     if ax is None:
         ax = plt.gca()
 
-    # named aggregation: produce columns mean, std, q5, q95
+    # 1) named aggregation into mean, std, q5, q95
     agg_df = (
         df.groupby(x)
         .agg(
@@ -114,29 +115,30 @@ def plot_line(df, x: str, y: str, smooth: int, ax=None, **kwargs):
         .reset_index()
     )
 
-    # smooth if needed
+    # 2) extract smoothed series
     if smooth > 1:
-        series_mean = agg_df["mean"].rolling(smooth).mean()
-        series_low = agg_df["q5"].rolling(smooth).mean()
-        series_high = agg_df["q95"].rolling(smooth).mean()
+        series = agg_df["mean"].rolling(smooth).mean()
+        lowq = agg_df["q5"].rolling(smooth).mean()
+        highq = agg_df["q95"].rolling(smooth).mean()
     else:
-        series_mean = agg_df["mean"]
-        series_low = agg_df["q5"]
-        series_high = agg_df["q95"]
+        series = agg_df["mean"]
+        lowq = agg_df["q5"]
+        highq = agg_df["q95"]
 
     width = ci_width(df[y])
 
-    # styling
+    # 3) pull styling out of kwargs (pop both aliases)
     label = kwargs.pop("label", y)
-    color = kwargs.pop("color", method_colors.get(label, "C0"))
+    if "c" in kwargs:
+        color = kwargs.pop("c")
+    else:
+        color = kwargs.pop("color", method_colors.get(label, "C0"))
     ls = kwargs.pop("ls", method_linestyles.get(label, "-"))
 
-    # plot
-    ax.plot(agg_df[x], series_mean, label=label, color=color, ls=ls, **kwargs)
-    ax.fill_between(
-        agg_df[x], series_mean - width, series_mean + width, alpha=0.25, color=color
-    )
-    ax.fill_between(agg_df[x], series_low, series_high, alpha=0.10, color=color)
+    # 4) plot with the remaining kwargs (marker, markersize, alpha, etc.)
+    ax.plot(agg_df[x], series, label=label, color=color, ls=ls, **kwargs)
+    ax.fill_between(agg_df[x], series - width, series + width, alpha=0.25, color=color)
+    ax.fill_between(agg_df[x], lowq, highq, alpha=0.10, color=color)
 
     ax.set_xlabel(x)
     ax.set_ylabel(y)
