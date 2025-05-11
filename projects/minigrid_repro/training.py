@@ -321,7 +321,8 @@ def train(
             metrics[k].append(v)
 
         # 3) early-stop check on fixed val_env, scoring ground-truth return
-        if stopper and (update_idx % eval_freq == 0):
+        # NOTE: hardcode
+        if stopper and (update_idx % eval_freq == 0) and (update_idx > 900):
             policy.eval()
             stats = eval(
                 policy,
