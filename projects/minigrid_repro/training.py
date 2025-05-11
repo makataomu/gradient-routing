@@ -320,7 +320,7 @@ def train(
         }
 
         # 3) hold-out eval for early-stop
-        if stopper and (update_idx % eval_freq == 0):
+        if stopper and (update_idx % eval_freq == 0) and (update_idx > 800):
             policy.eval()  # ⟵ switch to eval mode
             stats_hold = eval(
                 policy,
@@ -363,7 +363,7 @@ def train(
                         "update_idx": update_idx,
                         "global_step": global_step,
                         "policy_type": label,
-                        "eval_return": stats_eval["avg_return"],
+                        "avg_return": stats_eval["avg_return"],
                     }
                 )
 
