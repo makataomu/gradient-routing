@@ -290,7 +290,7 @@ def train(
     global_step = 0
     for update_idx in tqdm.trange(num_learning_updates):
         # 1) collect a batch & do one gradient update
-        t_start = time.time()
+
         processed_batch = generate_and_process_batch(
             train_env,
             policy,
@@ -381,11 +381,16 @@ def train(
                 )
     # ─── flush logs to CSV ──────────────────────────────────────────────────────
     # 6) write out CSVs
-    pd.DataFrame(metrics).set_index("update_idx").to_csv(
-        os.path.join(save_dir, f"train_results_{run_id}.csv")
-    )
-    pd.DataFrame(eval_metrics).to_csv(
-        os.path.join(save_dir, f"eval_results_{run_id}.csv")
-    )
+    tr_df = pd.DataFrame(metrics).set_index("update_idx")
+    tr_df.insert(0, "run_label", run_label)
+    tr_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
+    tr_df["run_id"] = run_id
+    tr_df.to_csv(os.path.join(save_dir, f"train_results_{run_id}.csv"))
+
+    ev_df = pd.DataFrame(eval_metrics).set_index("update_idx")
+    ev_df.insert(0, "run_label", run_label)
+    ev_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
+    ev_df["run_id"] = run_id
+    ev_df.to_csv(os.path.join(save_dir, f"eval_results_{run_id}.csv"))
     t.cuda.empty_cache()
     time.sleep(time_to_sleep_after_run)
