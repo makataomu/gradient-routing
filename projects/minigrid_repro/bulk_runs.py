@@ -1,4 +1,5 @@
 # %%
+import argparse
 import glob
 import math
 import os
@@ -16,7 +17,25 @@ from factored_representations.utils import Timer
 $(pdm venv activate) && python projects/minigrid_repro/bulk_runs.py
 """
 
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--run_types", nargs="+", default=["naive_outcomes"])
+    p.add_argument("--oversight_probs", nargs="+", type=float, default=[0.01, 0.02])
+    p.add_argument(
+        "--regularisers",
+        nargs="+",
+        default=["baseline", "dropout", "entropy0p05", "kl1e-3", "earlystop"],
+    )
+    p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
+    p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
+    p.add_argument("--num_parallel", type=int, default=4)
+    return p.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
     policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
@@ -28,7 +47,7 @@ if __name__ == "__main__":
 
     # BULK RUN SETTINGS
     num_parallel_runs = 8
-    num_iterates = defaultdict(lambda: 4)
+    num_iterates = defaultdict(lambda: 2)
     experiment_name = "oversight_levels"
 
     overwrite = False
@@ -39,9 +58,9 @@ if __name__ == "__main__":
                     os.path.join(dirname, experiment_name, pattern)
                 )
                 if pattern == "*.csv":
-                    assert (
-                        len(matching_paths) < 20
-                    ), "Are you sure you want to delete 20+ files?"
+                    assert len(matching_paths) < 20, (
+                        "Are you sure you want to delete 20+ files?"
+                    )
                 for path in matching_paths:
                     os.remove(path)
 
@@ -96,46 +115,65 @@ if __name__ == "__main__":
         ),
     }
 
-    oversight_probs = [0.01]
-    run_types = ["naive_outcomes"]
+    # oversight_probs = [0.01]
+    # run_types = ["naive_outcomes"]
+
+    basic_training_kwargs = dict(
+        steps_per_learning_update=32,
+        num_learning_updates=num_learning_updates,
+        policy_log_freq=1000,  # max(num_learning_updates // 200, 50),
+        loss_coefs=loss_coefs,
+        discount=0.97,
+        learning_rate=5e-5,
+        expert_weight_decay=0,
+        shared_weight_decay=0,
+        save_dir=os.path.join(data_dir, experiment_name),
+        policy_visualization_dir=os.path.join(
+            policy_visualization_dir, experiment_name
+        ),
+        gpus_to_restrict_to=None,
+    )
 
     training_kwargs_list = []
-    for oversight_prob in oversight_probs:
-        for run_type in run_types:
-            alg_settings = algorithm_settings_by_run_type[run_type]
-            env_kwargs_to_use = deepcopy(env_kwargs)
-            env_kwargs_to_use["oversight_prob"] = oversight_prob  # type: ignore
-            num_learning_updates_actual = (
-                int(num_learning_updates * oversight_prob)
-                if run_type == "oracle"
-                else num_learning_updates
-            )
-            eval_freq = 100
-            eval_freq_actual = math.ceil(eval_freq * oversight_prob)
+    for reg in args.regularisers:
+        for oversight_prob in args.oversight_probs:
+            for run_type in args.run_types:
+                alg_settings = algorithm_settings_by_run_type[run_type]
+                env_kwargs_to_use = deepcopy(env_kwargs)
+                env_kwargs_to_use["oversight_prob"] = oversight_prob  # type: ignore
+                eval_freq = 100
+                eval_freq_actual = math.ceil(eval_freq * oversight_prob)
 
-            training_kwargs = dict(
-                steps_per_learning_update=32,
-                num_learning_updates=num_learning_updates_actual,
-                eval_freq=eval_freq_actual,
-                policy_log_freq=1000,  # max(num_learning_updates // 200, 50),
-                discount=0.97,
-                loss_coefs=loss_coefs,
-                learning_rate=5e-5,
-                expert_weight_decay=0,
-                shared_weight_decay=0,
-                policy_network_constructor=alg_settings["policy_network_constructor"],
-                reward_fn_to_train_on=alg_settings["reward_fn_to_train_on"],
-                loss_getter_fn=alg_settings["loss_getter_fn"],
-                env_kwargs=env_kwargs_to_use,
-                save_dir=os.path.join(data_dir, experiment_name),
-                policy_visualization_dir=os.path.join(
-                    policy_visualization_dir, experiment_name
-                ),
-                run_label=run_type,
-                gpus_to_restrict_to=None,
-            )
-            for _ in range(num_iterates[run_type]):
-                training_kwargs_list.append(training_kwargs)
+                run_type_training_kwargs = basic_training_kwargs.copy()
+                run_type_training_kwargs.update(
+                    dict(
+                        eval_freq=eval_freq_actual,
+                        policy_network_constructor=alg_settings[
+                            "policy_network_constructor"
+                        ],
+                        reward_fn_to_train_on=alg_settings["reward_fn_to_train_on"],
+                        loss_getter_fn=alg_settings["loss_getter_fn"],
+                        env_kwargs=env_kwargs_to_use,
+                    )
+                )
+
+                reg_name = reg
+                reg_kw = {}
+                if reg == "earlystop":
+                    for h in args.holdout_fracs:
+                        reg_name = f"{reg}" + (f"_{int(100 * h)}pct" if h else "")
+                        reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
+
+                        training_kwargs = run_type_training_kwargs.copy()
+                        training_kwargs.update(
+                            dict(
+                                run_label=f"{run_type}+{reg_name}",
+                                regulariser_name=reg,
+                                regulariser_kwargs=reg_kw,
+                            )
+                        )
+                        for _ in range(num_iterates[run_type]):
+                            training_kwargs_list.append(training_kwargs)
 
     print(
         f"Experiment '{experiment_name}' running {len(training_kwargs_list)} total iterates across {num_parallel_runs} processes..."

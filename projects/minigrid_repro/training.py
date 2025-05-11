@@ -7,16 +7,32 @@ from typing import Callable, Optional, Union
 import numpy as np
 import pandas as pd
 import torch as t
-import tqdm
 
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.diagnostics as diagnostics
 import projects.minigrid_repro.grid as grid
 from factored_representations.utils import get_gpu_with_most_memory
+from projects.minigrid_repro.evaluating_env import *
 
 """
 $(pdm venv activate) && python projects/minigrid_repro/training.py
 """
+
+
+class EarlyStopper:
+    def __init__(self, patience: int = 10, tolerance: float = 1e-3):
+        self.patience = patience
+        self.tolerance = tolerance
+        self.best = -float("inf")
+        self.counter = 0
+
+    def step(self, metric: float) -> bool:
+        if metric > self.best + self.tolerance:
+            self.best = metric
+            self.counter = 0
+        else:
+            self.counter += 1
+        return self.counter >= self.patience
 
 
 def play_episode(env, policy, render=True, value_fn=None):
@@ -110,10 +126,11 @@ def get_end_stats(info):
 
 
 @t.inference_mode()
-def eval(policy, env_kwargs, num_env_steps, reward_fn, discount, device):
-    eval_env = grid.ContinuingEnv(**env_kwargs, device=device)
+def eval(policy, env_kwargs, num_env_steps, reward_fn, discount, device, env=None):
+    if env is None:
+        env = grid.ContinuingEnv(**env_kwargs, device=device)
     processed_batch = generate_and_process_batch(
-        eval_env, policy, reward_fn, discount, num_env_steps, device
+        env, policy, reward_fn, discount, num_env_steps, device
     )
     metrics = get_end_stats(processed_batch["infos"])
     metrics["avg_return"] = t.mean(processed_batch["returns"]).item()
@@ -181,104 +198,154 @@ def train(
     device=None,
     gpus_to_restrict_to: Optional[list[int]] = None,
     run_id: Optional[Union[str, int]] = None,
-    time_to_sleep_after_run=0,
+    time_to_sleep_after_run: float = 0,
+    regulariser_name: Optional[str] = None,
+    regulariser_kwargs: Optional[dict] = None,
 ):
-    assert 0 <= discount <= 1
-    assert "device" not in env_kwargs, "pass device separately"
+    """
+    Trains a policy.  If `regulariser_name=="earlystop"`, we reserve a fixed
+    fraction of TOTAL EPISODES as a held-out set, scored on ground-truth return,
+    and stop early when that stalls.
+    """
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(policy_visualization_dir, exist_ok=True)
 
-    pid = os.getpid()
-    seed = int(time.time()) + pid
+    # ─── seed & device ────────────────────────────────────────────────────────
+    seed = int(time.time()) + os.getpid()
     np.random.seed(seed)
     t.manual_seed(seed)
-
-    if run_id is None:
-        run_id = np.random.choice(1_000_000)
-
+    run_id = run_id or np.random.choice(1_000_000)
     if device is None:
         device = get_gpu_with_most_memory(gpus_to_restrict_to)
-        print(device)
-        _ = t.empty(100).to(device)  # reserve GPU memory
 
-    env = grid.ContinuingEnv(**env_kwargs, device=device)  # type: ignore
+    # ─── prepare validation env if using early-stop ──────────────────────────
+    stopper = None
+    val_env = None
+    if regulariser_name == "earlystop":
+        # pull holdout settings from the same kwargs dict
+        holdout_frac = regulariser_kwargs.get("holdout_frac", 0.1)  # type: ignore
+        holdout_max_episodes = regulariser_kwargs.get("holdout_max_episodes", 10_000)  # type: ignore
+        patience = regulariser_kwargs.get("patience", 400)  # type: ignore
+        tolerance = regulariser_kwargs.get("tolerance", 0.06)  # type: ignore
 
-    policy = policy_network_constructor(env.obs_size, 4).to(device)
+        # compute how many episodes to hold out
+        total_episodes = num_learning_updates * env_kwargs.get("n_envs", 1)
+        val_episodes = int(total_episodes * holdout_frac)
+        val_episodes = min(val_episodes, holdout_max_episodes)
 
+        # sample a reproducible table of episode specs
+        run_id_int = int(run_id)
+        seed_val = int(seed) + run_id_int
+        rng = t.Generator().manual_seed(seed_val)
+
+        val_specs = sample_episode_specs(
+            n_episodes=val_episodes,
+            nrows=env_kwargs["nrows"],
+            ncols=env_kwargs["ncols"],
+            oversight_prob=env_kwargs["oversight_prob"],
+            rng=rng,
+        )
+        # build the ReplayEnv over those specs
+        val_env = ReplayEnv(
+            episode_specs=val_specs,
+            **env_kwargs,
+            device=device,
+        )
+
+        stopper = EarlyStopper(patience=patience, tolerance=tolerance)
+
+    # ─── environment & networks ────────────────────────────────────────────────
+    train_env = grid.ContinuingEnv(**env_kwargs, device=device)  # fresh env
+    policy = policy_network_constructor(train_env.obs_size, 4).to(device)
     agents.reset_params(policy)
-
-    value_fn = agents.ValueNetwork(env.obs_size).to(device)
-
+    value_fn = agents.ValueNetwork(train_env.obs_size).to(device)
     agents.reset_params(value_fn)
 
+    # ─── optimizer ─────────────────────────────────────────────────────────────
     if hasattr(policy, "get_parameters"):
         expert_params, shared_params = policy.get_parameters()
     else:
-        expert_params = []
-        shared_params = list(policy.parameters())
-
-    value_params = list(value_fn.parameters())  # type: ignore
+        expert_params, shared_params = [], list(policy.parameters())
     optimizer = t.optim.Adam(
         [
             {"params": expert_params, "weight_decay": expert_weight_decay},
             {
-                "params": shared_params + value_params,
+                "params": shared_params + list(value_fn.parameters()),
                 "weight_decay": shared_weight_decay,
             },
         ],
         lr=learning_rate,
     )
 
+    # ─── log buffers ───────────────────────────────────────────────────────────
     metrics = defaultdict(list)
     eval_metrics = defaultdict(list)
 
     eval_policies = {"training_policy": policy}
     if hasattr(policy, "get_diamond_policy"):
-        eval_policies["diamond"] = policy.get_diamond_policy()  # type: ignore
-        eval_policies["ghost"] = policy.get_ghost_policy()  # type: ignore
+        eval_policies["diamond"] = policy.get_diamond_policy()
+        eval_policies["ghost"] = policy.get_ghost_policy()
 
     global_step = 0
-    for update_idx in tqdm.trange(num_learning_updates):
-        t_start = time.time()
+    for update_idx in range(num_learning_updates):
+        # 1) collect a batch & do one gradient update
         processed_batch = generate_and_process_batch(
-            env,
+            train_env,
             policy,
             reward_fn_to_train_on,
             discount,
             steps_per_learning_update,
             device,
         )
-        metrics["t_generate_and_process_batch"].append(time.time() - t_start)
-
-        coefs_this_step = {
-            label: coef(update_idx) if callable(coef) else coef
-            for label, coef in loss_coefs.items()
-        }
-
-        loss, batch_metrics = loss_getter_fn(
-            processed_batch, policy, value_fn, coefs=coefs_this_step
+        loss, batch_stats = loss_getter_fn(
+            processed_batch,
+            policy,
+            value_fn,
+            coefs={
+                k: (v(update_idx) if callable(v) else v) for k, v in loss_coefs.items()
+            },
         )
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        metrics["t_full_step"].append(time.time() - t_start)
 
-        global_step += steps_per_learning_update * env_kwargs["n_envs"]
+        # 2) always log train stats
+        global_step += steps_per_learning_update * env_kwargs.get("n_envs", 1)
         metrics["update_idx"].append(update_idx)
         metrics["global_step"].append(global_step)
+        for k, v in batch_stats.items():
+            metrics[k].append(v)
+        for k, v in get_end_stats(processed_batch["infos"]).items():
+            metrics[k].append(v)
 
-        for key, val in batch_metrics.items():
-            metrics[key].append(val)
+        # 3) early-stop check on fixed val_env, scoring ground-truth return
+        if stopper and (update_idx % eval_freq == 0):
+            policy.eval()
+            stats = eval(
+                policy,
+                env_kwargs,  # still unused if eval() accepts env
+                env_kwargs["max_step"],  # full episode length
+                true_reward_fn,  # ground-truth metric
+                discount,
+                device,
+                env=val_env,  # pass our ReplayEnv
+            )
+            mean_hold = stats["avg_return"]
+            metrics.setdefault("holdout_return", []).append(mean_hold)
+            if stopper.step(mean_hold):
+                print(
+                    f"[{run_label}] early-stopping at update {update_idx}, "
+                    f"hold-out return={mean_hold:.4f}"
+                )
+                break
+            policy.train()
 
-        stats = get_end_stats(processed_batch["infos"])
-        for key, val in stats.items():
-            metrics[key].append(val)
-
+        # 4) periodic full eval & any policy visualization
         is_final_step = update_idx == num_learning_updates - 1
-        if update_idx % eval_freq == 0 or is_final_step:
-            for policy_label, eval_policy in eval_policies.items():
-                eval_dict = eval(
-                    eval_policy,
+        if (update_idx % eval_freq == 0) or is_final_step:
+            for label, pol in eval_policies.items():
+                em = eval(
+                    pol,
                     env_kwargs,
                     env_kwargs["max_step"],
                     true_reward_fn,
@@ -286,10 +353,11 @@ def train(
                     device,
                 )
                 eval_metrics["update_idx"].append(update_idx)
-                eval_metrics["policy_type"].append(policy_label)
-                for key, val in eval_dict.items():
-                    eval_metrics[key].append(val)
+                eval_metrics["policy_type"].append(label)
+                for k, v in em.items():
+                    eval_metrics[k].append(v)
 
+        # 5) visualize gate / experts if desired
         if update_idx % policy_log_freq == 0 or is_final_step:
             if type(policy) is agents.RoutedPolicyNetwork:
                 update_idx_pad = str(update_idx).zfill(8)
@@ -309,27 +377,13 @@ def train(
                     ),
                     progress=(update_idx + 1) / num_learning_updates,
                 )
-
-    for key, val in metrics.items():
-        if isinstance(val[0], t.Tensor):
-            metrics[key] = t.stack(val).cpu().tolist()
-
-    results = pd.DataFrame(metrics).set_index("update_idx")
-    results["run_id"] = run_id
-    results.insert(0, "run_label", run_label)
-    results.insert(1, "oversight_prob", env_kwargs["oversight_prob"])
-    results.to_csv(os.path.join(save_dir, f"train_results_{run_id}.csv"))
-
-    eval_results = pd.DataFrame(eval_metrics).set_index("update_idx")
-    eval_results["run_id"] = run_id
-    eval_results.insert(0, "run_label", run_label)
-    eval_results.insert(1, "oversight_prob", env_kwargs["oversight_prob"])
-    eval_results.to_csv(os.path.join(save_dir, f"eval_results_{run_id}.csv"))
-
-    t.save(policy.state_dict(), os.path.join(save_dir, f"policy_{run_id}.pt"))
-    diagnostics.make_gif(
-        policy_visualization_dir, f"policy_{run_id}", delete_images_after=True
+    # ─── flush logs to CSV ──────────────────────────────────────────────────────
+    # 6) write out CSVs
+    pd.DataFrame(metrics).set_index("update_idx").to_csv(
+        os.path.join(save_dir, f"train_results_{run_id}.csv")
     )
-
+    pd.DataFrame(eval_metrics).to_csv(
+        os.path.join(save_dir, f"eval_results_{run_id}.csv")
+    )
     t.cuda.empty_cache()
     time.sleep(time_to_sleep_after_run)
