@@ -66,17 +66,46 @@ ax.set_xlabel("Oversight level (%)", fontsize=fontsize)
 ax.set_ylabel("Ground truth return", fontsize=fontsize)
 ax.set_title("Algorithm performance", fontsize=fontsize + 1)
 
-for run_label in ["routing", "filtering", "naive_outcomes"]:
+colors = [
+    (0.1216, 0.4667, 0.7059, 1.0),
+    (1.0, 0.4980, 0.0549, 1.0),
+    (0.1725, 0.6275, 0.1725, 1.0),
+    (0.8392, 0.1529, 0.1569, 1.0),
+    (0.5804, 0.4039, 0.7412, 1.0),
+    (0.5490, 0.3373, 0.2941, 1.0),
+    (0.8902, 0.4667, 0.7608, 1.0),
+    (0.4980, 0.4980, 0.4980, 1.0),
+    (0.7373, 0.7412, 0.1333, 1.0),
+    (0.0902, 0.7451, 0.8118, 1.0),
+]
+
+linestyles = [
+    "-",
+    "--",
+    "-.",
+    ":",
+    (0, (3, 1, 1, 1)),
+    (0, (5, 10)),
+    "-",
+    "--",
+    "-.",
+    ":",
+]
+
+for i, run_label in enumerate(final_steps.run_label.unique()):
     subset = final_steps[final_steps.run_label == run_label]
+    label = run_label
+    if run_label in a_utils.method_labels:
+        label = a_utils.method_labels[run_label]
     a_utils.plot_line(
         subset,
         x="oversight_prob",
         y="avg_return",
         smooth=1,
         ax=ax,
-        c=a_utils.method_colors[run_label],
-        ls=a_utils.method_linestyles[run_label],
-        label=a_utils.method_labels[run_label],
+        c=colors[i],
+        ls=linestyles[i],
+        label=label,
         alpha=1,
         marker="o",
         markersize=4,
