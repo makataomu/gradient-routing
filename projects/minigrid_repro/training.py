@@ -1,13 +1,11 @@
 # %%
 import os
 import time
-from collections import defaultdict
 from typing import Callable, Optional, Union
 
 import numpy as np
 import pandas as pd
 import torch as t
-import tqdm
 
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.diagnostics as diagnostics
@@ -86,8 +84,6 @@ def generate_and_process_batch(
     returns = reward_fn(infos) * 1.0
     for k in reversed(range(len(obs) - 1)):
         returns[k] += discount * returns[k + 1] * (1 - dones[k])
-
-    returns_flat = t.Tensor(returns.reshape(-1)).to(device)
 
     obs_flat = t.Tensor(obs.reshape(-1, *multienv.obs_shape)).to(device)
     actions_flat = t.Tensor(actions.reshape(-1)).to(device)
@@ -279,19 +275,19 @@ def train(
     )
 
     # ─── log buffers ───────────────────────────────────────────────────────────
-    metrics = defaultdict(list)
-    eval_metrics = defaultdict(list)
-
     eval_policies = {"training_policy": policy}
     if hasattr(policy, "get_diamond_policy"):
         eval_policies["diamond"] = policy.get_diamond_policy()
         eval_policies["ghost"] = policy.get_ghost_policy()
 
-    global_step = 0
-    for update_idx in tqdm.trange(num_learning_updates):
-        # 1) collect a batch & do one gradient update
+    # ─── initialize row-wise logs ───────────────────────────────────────────
+    train_rows = []
+    eval_rows = []
 
-        processed_batch = generate_and_process_batch(
+    global_step = 0
+    for update_idx in range(num_learning_updates):
+        # 1) collect & update as before
+        proc = generate_and_process_batch(
             train_env,
             policy,
             reward_fn_to_train_on,
@@ -300,7 +296,7 @@ def train(
             device,
         )
         loss, batch_stats = loss_getter_fn(
-            processed_batch,
+            proc,
             policy,
             value_fn,
             coefs={
@@ -311,43 +307,49 @@ def train(
         loss.backward()
         optimizer.step()
 
-        # 2) always log train stats
+        # increment total steps seen
         global_step += steps_per_learning_update * env_kwargs.get("n_envs", 1)
-        metrics["update_idx"].append(update_idx)
-        metrics["global_step"].append(global_step)
-        for k, v in batch_stats.items():
-            metrics[k].append(v)
-        for k, v in get_end_stats(processed_batch["infos"]).items():
-            metrics[k].append(v)
 
-        # 3) early-stop check on fixed val_env, scoring ground-truth return
-        # NOTE: hardcode
-        if stopper and (update_idx % eval_freq == 0) and (update_idx > 900):
-            policy.eval()
-            stats = eval(
+        # 2) record one train-row
+        train_return = float(proc["returns"].mean().item())
+        row = {
+            "update_idx": update_idx,
+            "global_step": global_step,
+            "train_return": train_return,
+        }
+
+        # 3) hold-out eval for early-stop
+        if stopper and (update_idx % eval_freq == 0):
+            policy.eval()  # ⟵ switch to eval mode
+            stats_hold = eval(
                 policy,
-                env_kwargs,  # still unused if eval() accepts env
-                env_kwargs["max_step"],  # full episode length
-                true_reward_fn,  # ground-truth metric
+                env_kwargs,
+                env_kwargs["max_step"],
+                true_reward_fn,
                 discount,
                 device,
-                env=val_env,  # pass our ReplayEnv
+                env=val_env,
             )
-            mean_hold = stats["avg_return"]
-            metrics.setdefault("holdout_return", []).append(mean_hold)
-            if stopper.step(mean_hold):
-                print(
-                    f"[{run_label}] early-stopping at update {update_idx}, "
-                    f"hold-out return={mean_hold:.4f}"
-                )
-                break
-            policy.train()
+            policy.train()  # ⟵ back to train mode
 
-        # 4) periodic full eval & any policy visualization
+            row["holdout_return"] = stats_hold["avg_return"]
+            if stopper.step(stats_hold["avg_return"]):
+                print(
+                    f"[{run_label}] early-stopping at update {update_idx},"
+                    f" hold-out={stats_hold['avg_return']:.4f}"
+                )
+                train_rows.append(row)
+                break
+        else:
+            row["holdout_return"] = float("nan")
+
+        train_rows.append(row)
+
+        # 4) periodic full-env eval
         is_final_step = update_idx == num_learning_updates - 1
         if (update_idx % eval_freq == 0) or is_final_step:
             for label, pol in eval_policies.items():
-                em = eval(
+                stats_eval = eval(
                     pol,
                     env_kwargs,
                     env_kwargs["max_step"],
@@ -355,10 +357,14 @@ def train(
                     discount,
                     device,
                 )
-                eval_metrics["update_idx"].append(update_idx)
-                eval_metrics["policy_type"].append(label)
-                for k, v in em.items():
-                    eval_metrics[k].append(v)
+                eval_rows.append(
+                    {
+                        "update_idx": update_idx,
+                        "global_step": global_step,
+                        "policy_type": label,
+                        "eval_return": stats_eval["avg_return"],
+                    }
+                )
 
         # 5) visualize gate / experts if desired
         if update_idx % policy_log_freq == 0 or is_final_step:
@@ -380,18 +386,19 @@ def train(
                     ),
                     progress=(update_idx + 1) / num_learning_updates,
                 )
-    # ─── flush logs to CSV ──────────────────────────────────────────────────────
-    # 6) write out CSVs
-    tr_df = pd.DataFrame(metrics).set_index("update_idx")
-    tr_df.insert(0, "run_label", run_label)
-    tr_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
-    tr_df["run_id"] = run_id
-    tr_df.to_csv(os.path.join(save_dir, f"train_results_{run_id}.csv"))
 
-    ev_df = pd.DataFrame(eval_metrics).set_index("update_idx")
-    ev_df.insert(0, "run_label", run_label)
-    ev_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
-    ev_df["run_id"] = run_id
-    ev_df.to_csv(os.path.join(save_dir, f"eval_results_{run_id}.csv"))
+    # ─── convert row logs to DataFrames & save ───────────────────────────────
+    train_df = pd.DataFrame(train_rows).set_index("update_idx")
+    train_df.insert(0, "run_label", run_label)
+    train_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
+    train_df["run_id"] = run_id
+    train_df.to_csv(os.path.join(save_dir, f"train_results_{run_id}.csv"))
+
+    eval_df = pd.DataFrame(eval_rows).set_index("update_idx")
+    eval_df.insert(0, "run_label", run_label)
+    eval_df.insert(1, "oversight_prob", env_kwargs.get("oversight_prob"))
+    eval_df["run_id"] = run_id
+    eval_df.to_csv(os.path.join(save_dir, f"eval_results_{run_id}.csv"))
+
     t.cuda.empty_cache()
     time.sleep(time_to_sleep_after_run)
