@@ -167,7 +167,7 @@ if __name__ == "__main__":
                         training_kwargs = run_type_training_kwargs.copy()
                         training_kwargs.update(
                             dict(
-                                run_label=f"{run_type}+{reg_name}",
+                                run_label=f"{run_type}+{reg_name}+{h}",
                                 regulariser_name=reg,
                                 regulariser_kwargs=reg_kw,
                             )

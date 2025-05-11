@@ -97,26 +97,33 @@ def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1):
 
 def plot_line(df, x: str, y: str, smooth: int, ax=None, **kwargs):
     """
-    Group‐by x, aggregate y with mean±CI, then plot. kwargs passed to plt.plot().
+    Group‐by x, aggregate y with mean±CI, then plot.
+    kwargs passed to plt.plot().
     """
     if ax is None:
         ax = plt.gca()
 
-    agg = df.groupby(x).agg({y: agg_fns}).reset_index()
-    mean = agg[y]["mean"].rolling(smooth).mean() if smooth > 1 else agg[y]["mean"]
+    # 1) aggregate into columns: mean, std, q5, q95
+    agg = df.groupby(x)[y].agg(agg_fns).reset_index()
+
+    # 2) pull out the series we need
+    series_mean = agg["mean"].rolling(smooth).mean() if smooth > 1 else agg["mean"]
     width = ci_width(df[y])
+    series_low = agg["q5"].rolling(smooth).mean() if smooth > 1 else agg["q5"]
+    series_high = agg["q95"].rolling(smooth).mean() if smooth > 1 else agg["q95"]
 
-    lowq = agg[y]["q5"].rolling(smooth).mean()
-    highq = agg[y]["q95"].rolling(smooth).mean()
-
-    # color & label
+    # 3) styling
     label = kwargs.pop("label", y)
     color = kwargs.pop("color", method_colors.get(label, "C0"))
     ls = kwargs.pop("ls", method_linestyles.get(label, "-"))
 
-    ax.plot(agg[x], mean, label=label, color=color, ls=ls, **kwargs)
-    ax.fill_between(agg[x], mean - width, mean + width, alpha=0.25, color=color)
-    ax.fill_between(agg[x], lowq, highq, alpha=0.10, color=color)
+    # 4) plot
+    ax.plot(agg[x], series_mean, label=label, color=color, ls=ls, **kwargs)
+    ax.fill_between(
+        agg[x], series_mean - width, series_mean + width, alpha=0.25, color=color
+    )
+    ax.fill_between(agg[x], series_low, series_high, alpha=0.10, color=color)
+
     ax.set_xlabel(x)
     ax.set_ylabel(y)
     return ax
