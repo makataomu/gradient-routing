@@ -97,33 +97,44 @@ def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1):
 
 def plot_line(df, x: str, y: str, smooth: int, ax=None, **kwargs):
     """
-    Group‐by x, aggregate y with mean±CI, then plot.
-    kwargs passed to plt.plot().
+    Group‐by x, aggregate y with mean±CI via named aggregation, then plot.
     """
     if ax is None:
         ax = plt.gca()
 
-    # 1) aggregate the y-series into columns: mean, std, q5, q95
-    grouped = df.groupby(x)[y]
-    agg_df = grouped.agg(agg_fns).reset_index()
-
-    # 2) pull out the smoothed series + CI width
-    series_mean = (
-        agg_df["mean"].rolling(smooth).mean() if smooth > 1 else agg_df["mean"]
+    # named aggregation: produce columns mean, std, q5, q95
+    agg_df = (
+        df.groupby(x)
+        .agg(
+            mean=(y, agg_fns["mean"]),
+            std=(y, agg_fns["std"]),
+            q5=(y, agg_fns["q5"]),
+            q95=(y, agg_fns["q95"]),
+        )
+        .reset_index()
     )
-    ci_w = ci_width(df[y])
-    series_low = agg_df["q5"].rolling(smooth).mean() if smooth > 1 else agg_df["q5"]
-    series_high = agg_df["q95"].rolling(smooth).mean() if smooth > 1 else agg_df["q95"]
 
-    # 3) styling
+    # smooth if needed
+    if smooth > 1:
+        series_mean = agg_df["mean"].rolling(smooth).mean()
+        series_low = agg_df["q5"].rolling(smooth).mean()
+        series_high = agg_df["q95"].rolling(smooth).mean()
+    else:
+        series_mean = agg_df["mean"]
+        series_low = agg_df["q5"]
+        series_high = agg_df["q95"]
+
+    width = ci_width(df[y])
+
+    # styling
     label = kwargs.pop("label", y)
     color = kwargs.pop("color", method_colors.get(label, "C0"))
     ls = kwargs.pop("ls", method_linestyles.get(label, "-"))
 
-    # 4) plot mean + CI bands
+    # plot
     ax.plot(agg_df[x], series_mean, label=label, color=color, ls=ls, **kwargs)
     ax.fill_between(
-        agg_df[x], series_mean - ci_w, series_mean + ci_w, alpha=0.25, color=color
+        agg_df[x], series_mean - width, series_mean + width, alpha=0.25, color=color
     )
     ax.fill_between(agg_df[x], series_low, series_high, alpha=0.10, color=color)
 
