@@ -45,9 +45,9 @@ class ReplayEnv(ContinuingEnv):
     """
 
     def __init__(self, episode_specs: List[EpisodeSpec], *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self._specs: List[EpisodeSpec] = episode_specs
         self._cursor: int = 0  # round-robin over the table
+        super().__init__(*args, **kwargs)
 
     # Overrides only the reset logic.  All tensor fields exist already
     # because they were initialised by the base-class constructor.
