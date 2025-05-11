@@ -6,6 +6,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 import pandas as pd
 import torch as t
+import tqdm
 
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.diagnostics as diagnostics
@@ -285,7 +286,7 @@ def train(
     eval_rows = []
 
     global_step = 0
-    for update_idx in range(num_learning_updates):
+    for update_idx in tqdm.trange(num_learning_updates):
         # 1) collect & update as before
         proc = generate_and_process_batch(
             train_env,
