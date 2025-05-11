@@ -316,7 +316,7 @@ def train(
         row = {
             "update_idx": update_idx,
             "global_step": global_step,
-            "train_return": train_return,
+            "avg_return": train_return,
         }
 
         # 3) hold-out eval for early-stop
