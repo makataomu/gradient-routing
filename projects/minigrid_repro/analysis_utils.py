@@ -40,6 +40,19 @@ method_labels = {
     "no_gate": "Gradient routing w/o gate",
 }
 
+colors = [
+    (0.1216, 0.4667, 0.7059, 1.0),
+    (1.0, 0.4980, 0.0549, 1.0),
+    (0.1725, 0.6275, 0.1725, 1.0),
+    (0.8392, 0.1529, 0.1569, 1.0),
+    (0.5804, 0.4039, 0.7412, 1.0),
+    (0.5490, 0.3373, 0.2941, 1.0),
+    (0.8902, 0.4667, 0.7608, 1.0),
+    (0.4980, 0.4980, 0.4980, 1.0),
+    (0.7373, 0.7412, 0.1333, 1.0),
+    (0.0902, 0.7451, 0.8118, 1.0),
+]
+
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 def normalize(arr: np.ndarray) -> np.ndarray:
@@ -78,7 +91,8 @@ def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1):
 
     for idx, (group_val, subset) in enumerate(df.groupby(group)):
         series = subset[y].rolling(smooth).mean() if smooth > 1 else subset[y]
-        color = preset_colors.get(group_val, f"C{idx}")
+        color = colors[idx]
+        # color = preset_colors.get(group_val, f"C{idx}")
         ls = preset_linestyles.get(group_val, "-")
 
         ax.plot(subset[x], series, label=group_val, color=color, ls=ls)

@@ -6,15 +6,23 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import projects.minigrid_repro.analysis_utils as a_utils
+try:
+    import projects.minigrid_repro.analysis_utils as a_utils
+except ImportError:
+    import analysis_utils as a_utils
 
-parent_dir = os.path.dirname(os.path.abspath(__file__))
-data_dir = os.path.join(parent_dir, "data")
-figures_dir = os.path.join(parent_dir, "figures")
-
-os.makedirs(figures_dir, exist_ok=True)
-
-custom_description = ""
+colors = [
+    (0.1216, 0.4667, 0.7059, 1.0),
+    (1.0, 0.4980, 0.0549, 1.0),
+    (0.1725, 0.6275, 0.1725, 1.0),
+    (0.8392, 0.1529, 0.1569, 1.0),
+    (0.5804, 0.4039, 0.7412, 1.0),
+    (0.5490, 0.3373, 0.2941, 1.0),
+    (0.8902, 0.4667, 0.7608, 1.0),
+    (0.4980, 0.4980, 0.4980, 1.0),
+    (0.7373, 0.7412, 0.1333, 1.0),
+    (0.0902, 0.7451, 0.8118, 1.0),
+]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, default="oversight_levels")
@@ -25,6 +33,15 @@ args = parser.parse_args()
 experiment_name = args.experiment_name
 subset_to_oversight = args.subset_to_oversight
 training_method = args.training_method
+
+parent_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(parent_dir, "data")
+figures_dir = os.path.join(parent_dir, "figures")
+figures_dir = os.path.join(figures_dir, experiment_name)
+
+os.makedirs(figures_dir, exist_ok=True)
+
+custom_description = ""
 
 description = custom_description if custom_description else experiment_name
 
@@ -72,10 +89,16 @@ ax.set_title(
     f"Learning curves at {oversight_percent}% oversight", fontsize=fontsize + 1
 )
 
-for run_label in eval_res.run_label.unique():
+for i, run_label in enumerate(eval_res.run_label.unique()):
     subset = eval_res[eval_res.run_label == run_label]
     a_utils.plot_line(
-        subset, x="update_idx", y="avg_return", smooth=2, ax=ax, label=run_label
+        subset,
+        x="update_idx",
+        y="avg_return",
+        smooth=2,
+        ax=ax,
+        label=run_label,
+        color=colors[i],
     )
 ax.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", fontsize=fontsize - 1)
 ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)

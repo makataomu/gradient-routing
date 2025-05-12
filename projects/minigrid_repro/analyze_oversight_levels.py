@@ -1,20 +1,30 @@
 # type: ignore
 # %%
+import argparse
 import glob
 import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import projects.minigrid_repro.analysis_utils as a_utils
+try:
+    import projects.minigrid_repro.analysis_utils as a_utils
+except ImportError:
+    import analysis_utils as a_utils
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+args = parser.parse_args()
+
+experiment_name = args.experiment_name
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
 figures_dir = os.path.join(parent_dir, "figures")
+figures_dir = os.path.join(figures_dir, experiment_name)
 
 os.makedirs(figures_dir, exist_ok=True)
 
-experiment_name = "oversight_levels"
 custom_description = ""
 
 description = custom_description if custom_description else experiment_name
@@ -115,7 +125,11 @@ ax.set_xscale("log")
 ax.set_xticks(xticks)
 ax.set_xticklabels(xtick_labels)
 ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-ax.legend(framealpha=0, fontsize=fontsize - 1)
+# ax.legend(framealpha=0, fontsize=fontsize - 1)
+ax.legend(
+    loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=fontsize - 1
+)
+plt.tight_layout(rect=[0, 0, 0.85, 1])
 plt.savefig(
     os.path.join(figures_dir, "rl_performance_by_oversight.pdf"),
     bbox_inches="tight",

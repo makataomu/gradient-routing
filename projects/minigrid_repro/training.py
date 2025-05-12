@@ -8,11 +8,18 @@ import pandas as pd
 import torch as t
 import tqdm
 
-import projects.minigrid_repro.agents as agents
-import projects.minigrid_repro.diagnostics as diagnostics
-import projects.minigrid_repro.grid as grid
+try:
+    import projects.minigrid_repro.agents as agents
+    import projects.minigrid_repro.diagnostics as diagnostics
+    import projects.minigrid_repro.grid as grid
+    from projects.minigrid_repro.evaluating_env import ReplayEnv, sample_episode_specs
+except ImportError:
+    import agents as agents
+    import diagnostics as diagnostics
+    import grid as grid
+    from evaluating_env import ReplayEnv, sample_episode_specs
+
 from factored_representations.utils import get_gpu_with_most_memory
-from projects.minigrid_repro.evaluating_env import *
 
 """
 $(pdm venv activate) && python projects/minigrid_repro/training.py

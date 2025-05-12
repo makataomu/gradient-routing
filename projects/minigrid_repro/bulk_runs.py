@@ -9,8 +9,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from functools import partial
 
-import projects.minigrid_repro.agents as agents
-import projects.minigrid_repro.training as training
+try:
+    import projects.minigrid_repro.agents as agents
+    import projects.minigrid_repro.training as training
+except ImportError:
+    import agents as agents
+    import training as training
+
 from factored_representations.utils import Timer
 
 """
@@ -161,13 +166,13 @@ if __name__ == "__main__":
                 reg_kw = {}
                 if reg == "earlystop":
                     for h in args.holdout_fracs:
-                        reg_name = f"{reg}" + (f"_{int(100 * h)}pct" if h else "")
+                        reg_name = f"{reg}" + (f"_{h}" if h else "")
                         reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
 
                         training_kwargs = run_type_training_kwargs.copy()
                         training_kwargs.update(
                             dict(
-                                run_label=f"{run_type}+{reg_name}+{h}",
+                                run_label=f"{run_type}+{reg_name}",
                                 regulariser_name=reg,
                                 regulariser_kwargs=reg_kw,
                             )

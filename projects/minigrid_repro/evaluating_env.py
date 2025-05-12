@@ -3,7 +3,10 @@ from typing import List, Tuple
 
 import torch
 
-from projects.minigrid_repro.grid import ContinuingEnv
+try:
+    from projects.minigrid_repro.grid import ContinuingEnv
+except ImportError:
+    from grid import ContinuingEnv
 
 # 1.  Specification of a single episode
 # Each episode is fully determined by four int64 tensors:
