@@ -179,6 +179,16 @@ if __name__ == "__main__":
                         )
                         for _ in range(num_iterates[run_type]):
                             training_kwargs_list.append(training_kwargs)
+                elif reg == "baseline":
+                    training_kwargs = run_type_training_kwargs.copy()
+                    training_kwargs.update(dict(run_label=f"{run_type}+{reg_name}"))
+
+                    for _ in range(num_iterates[run_type]):
+                        training_kwargs_list.append(training_kwargs)
+                else:
+                    print(f"{reg} not implemented.")
+                    pass
+                
 
     print(
         f"Experiment '{experiment_name}' running {len(training_kwargs_list)} total iterates across {num_parallel_runs} processes..."
