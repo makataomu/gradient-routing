@@ -34,7 +34,8 @@ def parse_args():
     )
     p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
-    p.add_argument("--num_iterates", type=int, default=4)
+    p.add_argument("--num_paral_runs", type=int, default=4)
+    p.add_argument("--num_steps", type=int, default=20000)
     return p.parse_args()
 
 
@@ -51,8 +52,8 @@ if __name__ == "__main__":
     }
 
     # BULK RUN SETTINGS
-    num_parallel_runs = 8
-    num_iterates = defaultdict(lambda: args.num_iterates)
+    num_max_paral_runs = 8
+    num_paral_runs = defaultdict(lambda: args.num_paral_runs)
     experiment_name = "oversight_levels"
 
     overwrite = False
@@ -77,7 +78,7 @@ if __name__ == "__main__":
     }
 
     num_envs = 512
-    num_learning_updates = 10000
+    num_learning_updates = args.num_steps
 
     env_kwargs = dict(
         n_envs=num_envs,
@@ -177,30 +178,29 @@ if __name__ == "__main__":
                                 regulariser_kwargs=reg_kw,
                             )
                         )
-                        for _ in range(num_iterates[run_type]):
+                        for _ in range(num_paral_runs[run_type]):
                             training_kwargs_list.append(training_kwargs)
                 elif reg == "baseline":
                     training_kwargs = run_type_training_kwargs.copy()
                     training_kwargs.update(dict(run_label=f"{run_type}+{reg_name}"))
 
-                    for _ in range(num_iterates[run_type]):
+                    for _ in range(num_paral_runs[run_type]):
                         training_kwargs_list.append(training_kwargs)
                 else:
                     print(f"{reg} not implemented.")
                     pass
-                
 
     print(
-        f"Experiment '{experiment_name}' running {len(training_kwargs_list)} total iterates across {num_parallel_runs} processes..."
+        f"Experiment '{experiment_name}' running {len(training_kwargs_list)} total iterates across {num_max_paral_runs} processes..."
     )
     timer = Timer(num_tasks=len(training_kwargs_list))
-    if num_parallel_runs == 1:
+    if num_max_paral_runs == 1:
         for training_kwargs in training_kwargs_list:
             training.train(**training_kwargs)  # type: ignore
             timer.increment()
     else:
         futures = []
-        with ProcessPoolExecutor(max_workers=num_parallel_runs) as executor:
+        with ProcessPoolExecutor(max_workers=num_max_paral_runs) as executor:
             for iterate_idx, training_kwargs in enumerate(training_kwargs_list):
                 time.sleep(2)
                 future = executor.submit(
