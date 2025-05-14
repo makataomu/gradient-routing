@@ -97,7 +97,7 @@ if __name__ == "__main__":
     }
 
     oversight_probs = [0.01]
-    run_types = ["naive_outcomes"]
+    run_types = ["routing"]
 
     training_kwargs_list = []
     for oversight_prob in oversight_probs:
