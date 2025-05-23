@@ -28,11 +28,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, default="oversight_levels")
 parser.add_argument("--subset_to_oversight", type=float, default=0.01)
 parser.add_argument("--training_method", type=str, default="routing")
+parser.add_argument("--label", type=str, default="")
 args = parser.parse_args()
 
 experiment_name = args.experiment_name
 subset_to_oversight = args.subset_to_oversight
 training_method = args.training_method
+label = args.label
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
@@ -73,6 +75,10 @@ if subset_to_oversight is not None:
         print(f"No data for oversight prob {subset_to_oversight}.")
     train_res = train_res[train_res.oversight_prob == subset_to_oversight]
     eval_res = eval_res[eval_res.oversight_prob == subset_to_oversight]
+
+    if label:
+        train_res = train_res[train_res.run_label == label]
+        eval_res = eval_res[eval_res.run_label == label]
 
 assert smooth_amt == 1, "Smoothing doesn't play well with oracle data filtering"
 

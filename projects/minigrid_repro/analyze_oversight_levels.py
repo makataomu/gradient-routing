@@ -129,6 +129,10 @@ ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
 ax.legend(
     loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=fontsize - 1
 )
+ax.set_xlabel("Oversight level (%)", fontsize=fontsize)
+ax.set_ylabel("Ground truth return", fontsize=fontsize)
+ax.set_title("Algorithm performance", fontsize=fontsize + 1)
+
 plt.tight_layout(rect=[0, 0, 0.85, 1])
 plt.savefig(
     os.path.join(figures_dir, "rl_performance_by_oversight.pdf"),

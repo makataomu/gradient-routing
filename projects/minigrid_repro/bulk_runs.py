@@ -1,6 +1,8 @@
 # %%
 import argparse
 import glob
+import inspect
+import json
 import math
 import os
 import time
@@ -36,11 +38,29 @@ def parse_args():
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     p.add_argument("--num_paral_runs", type=int, default=4)
     p.add_argument("--num_steps", type=int, default=20000)
+    p.add_argument(
+        "--reg_kwargs", type=json.loads, default="{}"
+    )  # --reg_kwargs '{"patience": 500, "tolerance": 0.05}'
     return p.parse_args()
+
+
+def check_reg_args(train_func, kwargs: dict):
+    sig = inspect.signature(train_func)
+    valid_keys = sig.parameters.keys()
+
+    filtered_kwargs = {}
+    for k, v in kwargs.items():
+        if k in valid_keys:
+            filtered_kwargs[k] = v
+        else:
+            raise KeyError(f"{k} is not in train")
+    return filtered_kwargs
 
 
 if __name__ == "__main__":
     args = parse_args()
+
+    check_reg_args(training.train, args.reg_kwargs)
 
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
@@ -168,7 +188,9 @@ if __name__ == "__main__":
                 if reg == "earlystop":
                     for h in args.holdout_fracs:
                         reg_name = f"{reg}" + (f"_{h}" if h else "")
-                        reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
+                        # reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
+                        reg_kw = {"holdout_frac": h}
+                        reg_kw.update(args.reg_kwargs)
 
                         training_kwargs = run_type_training_kwargs.copy()
                         training_kwargs.update(
@@ -213,3 +235,5 @@ if __name__ == "__main__":
             for future in as_completed(futures):
                 future.result()
                 timer.increment()
+
+# %%
