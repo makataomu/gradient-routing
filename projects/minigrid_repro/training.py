@@ -226,12 +226,14 @@ def train(
     # ─── prepare validation env if using early-stop ──────────────────────────
     stopper = None
     val_env = None
+    min_steps = 0
     if regulariser_name == "earlystop":
         # pull holdout settings from the same kwargs dict
-        holdout_frac = regulariser_kwargs.get("holdout_frac", 0.1)  # type: ignore
+        holdout_frac = regulariser_kwargs.get("holdout_frac", 0.1)  # type: ignore #TODO: write them in separate file to access everywhere maybe
         holdout_max_episodes = regulariser_kwargs.get("holdout_max_episodes", 10_000)  # type: ignore
         patience = regulariser_kwargs.get("patience", 400)  # type: ignore
         tolerance = regulariser_kwargs.get("tolerance", 0.06)  # type: ignore
+        min_steps = regulariser_kwargs.get("min_steps", 800)  # type: ignore
 
         # compute how many episodes to hold out
         total_episodes = num_learning_updates * env_kwargs.get("n_envs", 1)
@@ -327,7 +329,7 @@ def train(
         }
 
         # 3) hold-out eval for early-stop
-        if stopper and (update_idx % eval_freq == 0) and (update_idx > 800):
+        if stopper and (update_idx % eval_freq == 0) and (update_idx > min_steps):
             policy.eval()  # ⟵ switch to eval mode
             stats_hold = eval(
                 policy,

@@ -34,13 +34,13 @@ def parse_args():
         nargs="+",
         default=["baseline", "dropout", "entropy0p05", "kl1e-3", "earlystop"],
     )
-    p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
+    # p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     p.add_argument("--num_paral_runs", type=int, default=4)
     p.add_argument("--num_steps", type=int, default=20000)
     p.add_argument(
         "--reg_kwargs", type=json.loads, default="{}"
-    )  # --reg_kwargs '{"patience": 500, "tolerance": 0.05}'
+    )  # --reg_kwargs '{"holdout_frac": 0.1, "patience": 500, "tolerance": 0.05, "min_steps": 800}'
     return p.parse_args()
 
 
@@ -48,19 +48,25 @@ def check_reg_args(train_func, kwargs: dict):
     sig = inspect.signature(train_func)
     valid_keys = sig.parameters.keys()
 
-    filtered_kwargs = {}
     for k, v in kwargs.items():
-        if k in valid_keys:
-            filtered_kwargs[k] = v
-        else:
+        if k not in valid_keys:
             raise KeyError(f"{k} is not in train")
-    return filtered_kwargs
+
+
+def get_function_defaults(func):
+    sig = inspect.signature(func)
+    return {
+        name: param.default
+        for name, param in sig.parameters.items()
+        if param.default is not inspect.Parameter.empty
+    }
 
 
 if __name__ == "__main__":
     args = parse_args()
 
     check_reg_args(training.train, args.reg_kwargs)
+    train_defaults = get_function_defaults(training.train)
 
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
@@ -186,22 +192,20 @@ if __name__ == "__main__":
                 reg_name = reg
                 reg_kw = {}
                 if reg == "earlystop":
-                    for h in args.holdout_fracs:
-                        reg_name = f"{reg}" + (f"_{h}" if h else "")
-                        # reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
-                        reg_kw = {"holdout_frac": h}
-                        reg_kw.update(args.reg_kwargs)
+                    reg_kw = args.reg_kwargs
+                    reg_name = f"{reg}" + (f"_{args.reg_kwargs['holdout_frac']}")
+                    # reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
 
-                        training_kwargs = run_type_training_kwargs.copy()
-                        training_kwargs.update(
-                            dict(
-                                run_label=f"{run_type}+{reg_name}",
-                                regulariser_name=reg,
-                                regulariser_kwargs=reg_kw,
-                            )
+                    training_kwargs = run_type_training_kwargs.copy()
+                    training_kwargs.update(
+                        dict(
+                            run_label=f"{run_type}+{reg_name}",
+                            regulariser_name=reg,
+                            regulariser_kwargs=args.reg_kwargs,
                         )
-                        for _ in range(num_paral_runs[run_type]):
-                            training_kwargs_list.append(training_kwargs)
+                    )
+                    for _ in range(num_paral_runs[run_type]):
+                        training_kwargs_list.append(training_kwargs)
                 elif reg == "baseline":
                     training_kwargs = run_type_training_kwargs.copy()
                     training_kwargs.update(dict(run_label=f"{run_type}+{reg_name}"))
