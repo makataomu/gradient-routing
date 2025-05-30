@@ -39,7 +39,7 @@ def parse_args():
     p.add_argument("--num_paral_runs", type=int, default=4)
     p.add_argument("--num_steps", type=int, default=20000)
     p.add_argument(
-        "--reg_kwargs", type=json.loads, default="{}"
+        "--reg_kwargs", type=json.loads, default={}
     )  # --reg_kwargs '{"holdout_frac": 0.1, "patience": 500, "tolerance": 0.05, "min_steps": 800}'
     return p.parse_args()
 
@@ -65,8 +65,8 @@ def get_function_defaults(func):
 if __name__ == "__main__":
     args = parse_args()
 
-    check_reg_args(training.train, args.reg_kwargs)
-    train_defaults = get_function_defaults(training.train)
+    # check_reg_args(training.train, args.reg_kwargs)
+    # train_defaults = get_function_defaults(training.train)
 
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(parent_dir, "data")
@@ -193,9 +193,10 @@ if __name__ == "__main__":
                 reg_kw = {}
                 if reg == "earlystop":
                     reg_kw = args.reg_kwargs
-                    reg_name = f"{reg}" + (f"_{args.reg_kwargs['holdout_frac']}")
-                    # reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
+                    if "holdout_frac" in args.reg_kwargs:
+                        reg_name += f"_{args.reg_kwargs['holdout_frac']}"
 
+                    # reg_kw = {"holdout_frac": h, "patience": 400, "tolerance": 0.06}
                     training_kwargs = run_type_training_kwargs.copy()
                     training_kwargs.update(
                         dict(
