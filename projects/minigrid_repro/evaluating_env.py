@@ -23,7 +23,7 @@ def sample_episode_specs(
     ncols: int,
     oversight_prob: float,
     *,
-    rng: torch.Generator,
+    rng: torch.Generator,  # random number generator
 ) -> List[EpisodeSpec]:
     specs: List[EpisodeSpec] = []
     num_cells = nrows * ncols

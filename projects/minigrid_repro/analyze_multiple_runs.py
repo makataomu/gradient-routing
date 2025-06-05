@@ -25,13 +25,13 @@ colors = [
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+parser.add_argument("--exp_name", type=str, default="oversight_levels")
 parser.add_argument("--subset_to_oversight", type=float, default=0.01)
 parser.add_argument("--training_method", type=str, default="routing")
 parser.add_argument("--label", type=str, default="")
 args = parser.parse_args()
 
-experiment_name = args.experiment_name
+experiment_name = args.exp_name
 subset_to_oversight = args.subset_to_oversight
 training_method = args.training_method
 label = args.label
@@ -63,7 +63,17 @@ if train_res.update_idx.max() > 2000:
     smooth_amt = 1
 else:
     smooth_amt = 1
+
+holdout_files = glob.glob(os.path.join(experiment_dir, "holdout_results*.csv"))
+if holdout_files:
+    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files])
+    ncols_all_curves = 3
+else:
+    holdout_res = None
+    ncols_all_curves = 2
+
 print("done.")
+
 
 is_routing = eval_res.run_label == "routing"
 is_diamond_policy = eval_res.policy_type == "diamond"
@@ -117,15 +127,13 @@ plt.savefig(
 
 # %%
 n_runs = len(eval_res.run_id.unique())
-figsize = (8, 4)
+figsize = (4 * ncols_all_curves, 4)
 
-fig, (ax_train, ax_eval) = plt.subplots(ncols=2, figsize=figsize)
+fig, axes = plt.subplots(ncols=ncols_all_curves, figsize=figsize)
 fig.suptitle(f"{description} ({n_runs} total runs)")
-ax_train.set_title("Training returns (based on each alg's reward fn)")
-ax_train.set_xlabel("Update step")
-ax_train.set_ylabel("Stepwise return")
-ax_eval.set_title("Ground-truth return")
-ax_eval.set_xlabel("Update step")
+
+# Training plot
+ax_train = axes[0]
 a_utils.gplot(
     train_res,
     x="update_idx",
@@ -134,26 +142,45 @@ a_utils.gplot(
     smooth=smooth_amt,
     ax=ax_train,
 )
+ax_train.set_title("Training returns")
+ax_train.set_xlabel("Update step")
+ax_train.set_ylabel("Stepwise return")
+ax_train.legend()
 
-is_routing = eval_res.run_label == "routing"
-is_diamond_policy = eval_res.policy_type == "diamond"
-eval_res_sub = eval_res[(is_routing & is_diamond_policy) | ~is_routing]
+# Holdout plot (optional)
+if holdout_res is not None:
+    ax_holdout = axes[1]
+    a_utils.gplot(
+        holdout_res,
+        x="update_idx",
+        y="avg_return",
+        group="run_label",
+        smooth=smooth_amt,
+        ax=ax_holdout,
+    )
+    ax_holdout.set_title("Hold-out returns")
+    ax_holdout.set_xlabel("Update step")
+    ax_holdout.legend()
 
+# Evaluation plot
+ax_eval = axes[2] if holdout_res is not None else axes[1]
 a_utils.gplot(
-    eval_res_sub,
+    eval_res,
     x="update_idx",
     y="avg_return",
     group="run_label",
     smooth=smooth_amt,
     ax=ax_eval,
 )
-
-ax_train.legend()
+ax_eval.set_title("Ground-truth test returns")
+ax_eval.set_xlabel("Update step")
 ax_eval.legend()
+
 plt.tight_layout()
 plt.savefig(
     os.path.join(
-        figures_dir, f"rl_both_curves_{training_method}_{oversight_percent}.pdf"
+        figures_dir,
+        f"rl_{'three' if holdout_res is not None else 'two'}_curves_{training_method}_{oversight_percent}.pdf",
     ),
     bbox_inches="tight",
 )

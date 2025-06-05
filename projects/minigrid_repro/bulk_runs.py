@@ -11,6 +11,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from functools import partial
 
+import numpy as np
+
 try:
     import projects.minigrid_repro.agents as agents
     import projects.minigrid_repro.training as training
@@ -35,12 +37,13 @@ def parse_args():
         default=["baseline", "dropout", "entropy0p05", "kl1e-3", "earlystop"],
     )
     # p.add_argument("--holdout_fracs", nargs="+", type=float, default=[0.10, 0.25, 0.5])
-    p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
+    p.add_argument("--seeds", nargs="+", type=int, default=[])
     p.add_argument("--num_paral_runs", type=int, default=4)
     p.add_argument("--num_steps", type=int, default=20000)
     p.add_argument(
         "--reg_kwargs", type=json.loads, default={}
-    )  # --reg_kwargs '{"holdout_frac": 0.1, "patience": 500, "tolerance": 0.05, "min_steps": 800}'
+    )  # --reg_kwargs '{"holdout_frac": 0.1, "patience": 500, "tolerance": 0.05, "min_steps": 800}' - kaggle
+    # "{\"holdout_frac\":0.003,\"patience\":20,\"tolerance\":0.04,\"min_steps\":100}" - cmd
     return p.parse_args()
 
 
@@ -230,6 +233,19 @@ if __name__ == "__main__":
         with ProcessPoolExecutor(max_workers=num_max_paral_runs) as executor:
             for iterate_idx, training_kwargs in enumerate(training_kwargs_list):
                 time.sleep(2)
+
+                if args.seeds is not None:
+                    cli_seed = args.seeds[iterate_idx % len(args.seeds)]
+                    unique_suffix = np.random.randint(0, 1000)
+                    filename_id = cli_seed * 10000 + unique_suffix  # 70483
+                    training_kwargs.update(
+                        {
+                            "run_id": filename_id,
+                            "random_seed": False,
+                            "default_seed": cli_seed,
+                        }
+                    )
+
                 future = executor.submit(
                     training.train,
                     time_to_sleep_after_run=2,

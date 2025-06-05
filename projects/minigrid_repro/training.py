@@ -27,19 +27,61 @@ $(pdm venv activate) && python projects/minigrid_repro/training.py
 
 
 class EarlyStopper:
-    def __init__(self, patience: int = 10, tolerance: float = 1e-3):
-        self.patience = patience
-        self.tolerance = tolerance
-        self.best = -float("inf")
-        self.counter = 0
+    """
+    EarlyStopper that counts 'patience' in raw update steps.
+    You still only call step(current_return, update_idx), typically inside the loop
+    whenever (update_idx % eval_freq == 0). But patience is compared to update_idx,
+    not to an eval counter.
+    """
 
-    def step(self, metric: float) -> bool:
-        if metric > self.best + self.tolerance:
-            self.best = metric
-            self.counter = 0
-        else:
-            self.counter += 1
-        return self.counter >= self.patience
+    def __init__(self, patience_updates: int, tolerance: float, min_updates: int = 0):
+        """
+        Args:
+            patience_updates:  how many updates without improvement before stopping
+            tolerance:         minimal increase in hold-out return to count as improvement
+            min_updates:       never stop before this many raw updates
+        """
+        self.patience_updates = patience_updates
+        self.tolerance = tolerance
+        self.min_updates = min_updates
+
+        # initialize
+        self.best_return = -float("inf")
+        self.last_improve_update = 0
+
+        # If we haven’t yet done min_updates, we ignore stopping
+        # (so last_improve_update effectively starts at 0).
+
+    def step(self, current_return: float, update_idx: int) -> bool:
+        """
+        Should be called only when we actually do an evaluation (i.e. update_idx % eval_freq == 0).
+        But patience is measured in raw updates.
+
+        Args:
+            current_return:  the hold-out avg_return at this evaluation
+            update_idx:      the raw update index (0-based or 1-based, consistent with training loop)
+        Returns:
+            True if we should early-stop, False otherwise.
+        """
+        # If we haven't reached min_updates yet, never stop:
+        if update_idx < self.min_updates:
+            # Still use this to update best/last_improve if we do improve, though:
+            if current_return > self.best_return + self.tolerance:
+                self.best_return = current_return
+                self.last_improve_update = update_idx
+            return False
+
+        # Check for improvement:
+        if current_return > self.best_return + self.tolerance:
+            self.best_return = current_return
+            self.last_improve_update = update_idx
+            return False
+
+        # No improvement; check how many updates since last improvement:
+        if (update_idx - self.last_improve_update) >= self.patience_updates:
+            return True
+
+        return False
 
 
 def play_episode(env, policy, render=True, value_fn=None):
@@ -200,12 +242,14 @@ def train(
     save_dir: str,
     policy_visualization_dir: str,
     run_label: str,
+    run_id: Optional[Union[str, int]] = None,
     device=None,
     gpus_to_restrict_to: Optional[list[int]] = None,
-    run_id: Optional[Union[str, int]] = None,
     time_to_sleep_after_run: float = 0,
     regulariser_name: Optional[str] = None,
     regulariser_kwargs: Optional[dict] = None,
+    random_seed: bool = True,  # for reproducibility
+    default_seed: int = 42,
 ):
     """
     Trains a policy.  If `regulariser_name=="earlystop"`, we reserve a fixed
@@ -216,10 +260,14 @@ def train(
     os.makedirs(policy_visualization_dir, exist_ok=True)
 
     # ─── seed & device ────────────────────────────────────────────────────────
-    seed = int(time.time()) + os.getpid()
+    run_id = run_id or np.random.choice(1_000_000)
+
+    seed = default_seed
+    if random_seed:
+        seed = int(time.time()) + os.getpid() + np.random.choice(1_000_000)
+
     np.random.seed(seed)
     t.manual_seed(seed)
-    run_id = run_id or np.random.choice(1_000_000)
     if device is None:
         device = get_gpu_with_most_memory(gpus_to_restrict_to)
 
@@ -227,6 +275,7 @@ def train(
     stopper = None
     val_env = None
     min_steps = 0
+
     if regulariser_name == "earlystop":
         # pull holdout settings from the same kwargs dict
         holdout_frac = regulariser_kwargs.get("holdout_frac", 0.1)  # type: ignore #TODO: write them in separate file to access everywhere maybe
@@ -241,8 +290,7 @@ def train(
         val_episodes = min(val_episodes, holdout_max_episodes)
 
         # sample a reproducible table of episode specs
-        run_id_int = int(run_id)
-        seed_val = int(seed) + run_id_int
+        seed_val = int(seed) + 42
         rng = t.Generator().manual_seed(seed_val)
 
         val_specs = sample_episode_specs(
@@ -253,15 +301,23 @@ def train(
             rng=rng,
         )
         # build the ReplayEnv over those specs
+        # we are not going to use training env rng because it's used in _reset_envs
+        # and this method is redefined with replay env's episodes
         val_env = ReplayEnv(
             episode_specs=val_specs,
             **env_kwargs,
             device=device,
         )
 
-        stopper = EarlyStopper(patience=patience, tolerance=tolerance)
+        stopper = EarlyStopper(
+            patience_updates=patience, tolerance=tolerance, min_updates=min_steps
+        )
 
     # ─── environment & networks ────────────────────────────────────────────────
+    seed_train = int(seed) + 24
+    env_rng = t.Generator().manual_seed(seed_train)
+    env_kwargs["rng"] = env_rng
+
     train_env = grid.ContinuingEnv(**env_kwargs, device=device)  # fresh env
     policy = policy_network_constructor(train_env.obs_size, 4).to(device)
     agents.reset_params(policy)
@@ -292,6 +348,7 @@ def train(
 
     # ─── initialize row-wise logs ───────────────────────────────────────────
     train_rows = []
+    holdout_rows = []
     eval_rows = []
 
     global_step = 0
@@ -329,9 +386,9 @@ def train(
         }
 
         # 3) hold-out eval for early-stop
-        if stopper and (update_idx % eval_freq == 0) and (update_idx > min_steps):
+        if stopper and update_idx % eval_freq == 0:
             policy.eval()  # ⟵ switch to eval mode
-            stats_hold = eval(
+            stats_holdout = eval(
                 policy,
                 env_kwargs,
                 env_kwargs["max_step"],
@@ -342,16 +399,23 @@ def train(
             )
             policy.train()  # ⟵ back to train mode
 
-            row["holdout_return"] = stats_hold["avg_return"]
-            if stopper.step(stats_hold["avg_return"]):
+            # row["holdout_return"] = stats_holdout["avg_return"]
+            holdout_rows.append(
+                {
+                    "update_idx": update_idx,
+                    "global_step": global_step,
+                    "avg_return": stats_holdout["avg_return"],
+                }
+            )
+            if stopper.step(stats_holdout["avg_return"], update_idx):
                 print(
                     f"[{run_label}] early-stopping at update {update_idx},"
-                    f" hold-out={stats_hold['avg_return']:.4f}"
+                    f" hold-out={stats_holdout['avg_return']:.4f}"
                 )
                 train_rows.append(row)
                 break
-        else:
-            row["holdout_return"] = float("nan")
+        # else:
+        # row["holdout_return"] = float("nan")
 
         train_rows.append(row)
 
@@ -410,5 +474,15 @@ def train(
     eval_df["run_id"] = run_id
     eval_df.to_csv(os.path.join(save_dir, f"eval_results_{run_id}.csv"))
 
+    if len(holdout_rows) > 0:
+        df_hold = pd.DataFrame(holdout_rows)
+        df_hold["run_id"] = run_id
+        df_hold["run_label"] = run_label
+        df_hold.to_csv(
+            os.path.join(save_dir, f"holdout_results_{run_id}.csv"),
+            index=False,
+        )
+
     t.cuda.empty_cache()
     time.sleep(time_to_sleep_after_run)
+    

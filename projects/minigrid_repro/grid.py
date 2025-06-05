@@ -1,5 +1,5 @@
 # %%
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import torch
 
@@ -15,6 +15,7 @@ class ContinuingEnv:
         oversight_prob: float,
         spurious_oversight_prob: float,
         device: torch.device = torch.device("cuda"),
+        rng: Union[torch.Generator, None] = None,
     ):
         self.n_envs = n_envs
         self.nrows = nrows
@@ -36,6 +37,7 @@ class ContinuingEnv:
         self.episode_over = torch.zeros(n_envs, dtype=torch.bool, device=device)
 
         self.n_envs_arange = torch.arange(n_envs, device=device)
+        self.rng = rng
 
         self.reset()
 
@@ -120,7 +122,9 @@ class ContinuingEnv:
         n_reset = env_indices.numel()
         new_loc_indexes = torch.stack(
             [
-                torch.randperm(self.nrows * self.ncols, device=self.device)[:3]
+                torch.randperm(
+                    self.nrows * self.ncols, device=self.device, generator=self.rng
+                )[:3]
                 for _ in range(n_reset)
             ]
         ).T
@@ -141,10 +145,12 @@ class ContinuingEnv:
             dim=1,
         )
 
-        random_values = torch.rand(n_reset * 2, device=self.device)
+        random_values = torch.rand(n_reset * 2, device=self.device, generator=self.rng)
 
         self.oversight[env_indices] = (
-            torch.rand(n_reset, self.nrows, self.ncols, device=self.device)
+            torch.rand(
+                n_reset, self.nrows, self.ncols, device=self.device, generator=self.rng
+            )
             < self.spurious_oversight_prob
         )
         self.oversight[

@@ -1,6 +1,6 @@
 # %%
-import glob
 import os
+import sys
 from typing import Optional
 
 import matplotlib.pyplot as plt
@@ -8,6 +8,7 @@ import torch as t
 from matplotlib.patches import Rectangle
 from PIL import Image
 
+sys.path.append("")  # adjust if necessary
 import projects.minigrid_repro.agents as agents
 import projects.minigrid_repro.grid as grid
 from factored_representations.utils import get_gpu_with_most_memory
