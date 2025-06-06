@@ -34,7 +34,8 @@ def sample_episode_specs(
         start_rc = torch.stack((start // ncols, start % ncols))
         diamond_rc = torch.stack((diamond // ncols, diamond % ncols))
         ghost_rc = torch.stack((ghost // ncols, ghost % ncols))
-        probs = torch.full((2,), oversight_prob)  # no generator here
+        # probs = torch.full((2,), oversight_prob)  # no generator here
+        probs = torch.full((num_cells,), oversight_prob, device=device)
         mask = torch.bernoulli(probs, generator=rng).to(torch.bool)
         specs.append((start_rc, ghost_rc, diamond_rc, mask))
     return specs

@@ -87,7 +87,7 @@ N_JOBS = args.n_jobs
 DEVICE = args.device
 experiment_name = args.experiment_name
 
-HOLDOUT_FRAC = 0.3 * OVERSIGHT_PROB  # tune on one, use another
+# HOLDOUT_FRAC = 0.3 * OVERSIGHT_PROB  # tune on one, use another
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
