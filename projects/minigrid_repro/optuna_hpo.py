@@ -16,40 +16,86 @@ import torch as t
 from optuna.pruners import HyperbandPruner
 
 sys.path.append("projects/minigrid_repro")  # adjust if necessary
-import agents
-import training
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 1) GLOBAL “knobs” for this study
 # ─────────────────────────────────────────────────────────────────────────────
-OVERSIGHT_PROB = 0.007  # NOTE: 0.7% for holdou+trai, 0.3% for val.
+import argparse
+
+import agents
+import training
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Optuna HPO for minigrid environment")
+    parser.add_argument(
+        "--oversight_prob",
+        type=float,
+        default=0.007,
+        help="Oversight probability for env",
+    )
+    parser.add_argument(
+        "--holdout_frac",
+        type=float,
+        default=0.003,
+        help="Fraction of data for hold-out validation",
+    )
+    parser.add_argument(
+        "--max_updates",
+        type=int,
+        default=20000,
+        help="Maximum number of gradient updates",
+    )
+    parser.add_argument(
+        "--min_updates",
+        type=int,
+        default=400,
+        help="Minimum number of updates before pruning",
+    )
+    parser.add_argument(
+        "--eta", type=int, default=3, help="Hyperband reduction factor (top 1/eta)"
+    )
+    parser.add_argument(
+        "--n_trials", type=int, default=20, help="Number of Optuna trials"
+    )
+    parser.add_argument(
+        "--n_jobs", type=int, default=-1, help="Number of parallel Optuna jobs"
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if t.cuda.is_available() else "cpu",
+        help="Device to run on",
+    )
+    parser.add_argument(
+        "--experiment_name", type=str, default="optuna", help="Name of the experiment"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=100, help="Random seed for reproducibility"
+    )
+    return parser.parse_args()
+
+
+args = parse_args()
+OVERSIGHT_PROB = args.oversight_prob
+HOLDOUT_FRAC = args.holdout_frac
+SEED = args.seed
+MAX_UPDATES = args.max_updates
+MIN_UPDATES = args.min_updates
+ETA = args.eta
+N_TRIALS = args.n_trials
+N_JOBS = args.n_jobs
+DEVICE = args.device
+experiment_name = args.experiment_name
+
 HOLDOUT_FRAC = 0.3 * OVERSIGHT_PROB  # tune on one, use another
-HOLDOUT_FRAC = 0.003  # tune on it and use it as early stopper
-
-SEED = 100
-
-# We’ll treat each “resource” unit as one gradient-update (i.e. one 'update_idx'):
-MAX_UPDATES = 20000  # <-- for a quick smoke-test, use 2000 (instead of 20000)
-MIN_UPDATES = 400  # <-- NOTE: 5-10% of MAX_UPDATES
-ETA = 3  # <-- keep top one-third at each rung
-
-# Number of Optuna trials you want to run (for a quick check, use ~20–40)
-N_TRIALS = 20  # NOTE: 10 for each HP
-
-# We'll run single‐threaded (n_jobs=1) so you see exactly which trials get pruned.
-N_JOBS = -1
-
-DEVICE = "cuda" if t.cuda.is_available() else "cpu"
-# DEVICE = get_gpu_with_most_memory()
-
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
 policy_visualization_dir = os.path.join(parent_dir, "policy_visualization")
-experiment_name = "optuna"
 
 reg = "earlystop"
 run_type = "naive_outcomes"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2) A small helper to “inject” the trial into training.train
 # ─────────────────────────────────────────────────────────────────────────────
