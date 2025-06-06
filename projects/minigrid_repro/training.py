@@ -291,7 +291,10 @@ def train(
 
         # sample a reproducible table of episode specs
         seed_val = int(seed) + 42
-        rng = t.Generator().manual_seed(seed_val)
+        if device.type == "cuda":
+            rng = t.Generator(device=device).manual_seed(seed_val)
+        else:
+            rng = t.Generator().manual_seed(seed_val)
 
         val_specs = sample_episode_specs(
             n_episodes=val_episodes,
@@ -315,7 +318,10 @@ def train(
 
     # ─── environment & networks ────────────────────────────────────────────────
     seed_train = int(seed) + 24
-    env_rng = t.Generator().manual_seed(seed_train)
+    if device.type == "cuda":
+        env_rng = t.Generator(device=device).manual_seed(seed_train)
+    else:
+        env_rng = t.Generator().manual_seed(seed_train)
     env_kwargs["rng"] = env_rng
 
     train_env = grid.ContinuingEnv(**env_kwargs, device=device)  # fresh env
@@ -485,4 +491,3 @@ def train(
 
     t.cuda.empty_cache()
     time.sleep(time_to_sleep_after_run)
-    
