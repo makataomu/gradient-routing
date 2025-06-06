@@ -302,6 +302,7 @@ def train(
             ncols=env_kwargs["ncols"],
             oversight_prob=env_kwargs["oversight_prob"],
             rng=rng,
+            device=device,
         )
         # build the ReplayEnv over those specs
         # we are not going to use training env rng because it's used in _reset_envs

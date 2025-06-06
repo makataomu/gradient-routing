@@ -24,11 +24,12 @@ def sample_episode_specs(
     oversight_prob: float,
     *,
     rng: torch.Generator,  # random number generator
+    device=None,
 ) -> List[EpisodeSpec]:
     specs: List[EpisodeSpec] = []
     num_cells = nrows * ncols
     for _ in range(n_episodes):
-        perm = torch.randperm(num_cells, generator=rng)
+        perm = torch.randperm(num_cells, generator=rng, device=device)
         start, diamond, ghost = perm[:3]
         start_rc = torch.stack((start // ncols, start % ncols))
         diamond_rc = torch.stack((diamond // ncols, diamond % ncols))

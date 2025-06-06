@@ -23,6 +23,10 @@ import training
 # 1) GLOBAL “knobs” for this study
 # ─────────────────────────────────────────────────────────────────────────────
 OVERSIGHT_PROB = 0.007  # NOTE: 0.7% for holdou+trai, 0.3% for val.
+HOLDOUT_FRAC = 0.3 * OVERSIGHT_PROB  # tune on one, use another
+HOLDOUT_FRAC = 0.003  # tune on it and use it as early stopper
+
+SEED = 100
 
 # We’ll treat each “resource” unit as one gradient-update (i.e. one 'update_idx'):
 MAX_UPDATES = 20000  # <-- for a quick smoke-test, use 2000 (instead of 20000)
@@ -36,6 +40,8 @@ N_TRIALS = 20  # NOTE: 10 for each HP
 N_JOBS = -1
 
 DEVICE = "cuda" if t.cuda.is_available() else "cpu"
+# DEVICE = get_gpu_with_most_memory()
+
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
@@ -146,18 +152,20 @@ def objective(trial: optuna.Trial) -> float:
                 policy_visualization_dir, experiment_name
             ),
             "run_label": run_label,
-            "device": DEVICE,
+            # "device": DEVICE,
             "regulariser_name": "earlystop",
             "regulariser_kwargs": {
                 # 512 x 32 × 0.007 = 114 episodes
                 # 512 x 32 × 0.007 × 0.3 = 34 episodes
-                "holdout_frac": 0.3 * OVERSIGHT_PROB,
+                "holdout_frac": HOLDOUT_FRAC,
                 "patience": patience,
                 "tolerance": tolerance,
                 "min_steps": MIN_UPDATES,
             },
             "gpus_to_restrict_to": None,
             "run_id": run_id,
+            "random_seed": False,
+            "default_seed": SEED,
         }
 
         # Create directories (so no “file not found” errors):
@@ -200,11 +208,11 @@ def objective(trial: optuna.Trial) -> float:
         import pandas as pd
 
         # Read the largest (most recent) eval-results:
-        f = os.path.join(training_kwargs["save_dir"], f"eval_results_{run_id}.csv")
+        f = os.path.join(training_kwargs["save_dir"], f"holdout_results_{run_id}.csv")
         print(f"Trial {trial.number} wrote: {f}")
 
-        df = pd.read_csv(f)
-        final_avg = df["avg_return"].iloc[-1]
+        df_holdout = pd.read_csv(f)
+        final_avg = df_holdout["avg_return"].max()
 
         print(run_id, " - ", final_avg)
         return float(final_avg)
