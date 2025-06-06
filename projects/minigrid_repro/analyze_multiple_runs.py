@@ -5,6 +5,7 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 
 try:
     import projects.minigrid_repro.analysis_utils as a_utils
@@ -67,9 +68,13 @@ else:
 holdout_files = glob.glob(os.path.join(experiment_dir, "holdout_results*.csv"))
 if holdout_files:
     holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files])
+    best_idx = holdout_res.loc[holdout_res.groupby("run_id")["avg_return"].idxmax()][
+        ["run_id", "update_idx"]
+    ].rename(columns={"update_idx": "best_update"})
     ncols_all_curves = 3
 else:
     holdout_res = None
+    best_idx = pd.DataFrame(columns=["run_id", "best_update"])
     ncols_all_curves = 2
 
 print("done.")
@@ -126,55 +131,95 @@ plt.savefig(
 )
 
 # %%
-n_runs = len(eval_res.run_id.unique())
+run_ids = sorted(train_res.run_id.unique())
+n_runs = len(run_ids)
 figsize = (4 * ncols_all_curves, 4)
 
-fig, axes = plt.subplots(ncols=ncols_all_curves, figsize=figsize)
-fig.suptitle(f"{description} ({n_runs} total runs)")
 
-# Training plot
+# Plotting all runs together with unique colors
+run_ids = sorted(train_res.run_id.unique())
+palette = sns.color_palette("tab10", n_colors=train_res.run_id.nunique())
+run_id_to_color = {
+    run_id: palette[i % len(palette)]
+    for i, run_id in enumerate(train_res.run_id.unique())
+}
+
+# Plot all runs together
+ncols_all_curves = 3 if holdout_res is not None else 2
+figsize = (4 * ncols_all_curves, 4)
+fig, axes = plt.subplots(ncols=ncols_all_curves, figsize=figsize)
+fig.suptitle(
+    f"{description} ({len(train_res.run_id.unique())} total runs)", fontsize=14
+)
+
+# Plot training
 ax_train = axes[0]
 a_utils.gplot(
     train_res,
     x="update_idx",
     y="avg_return",
-    group="run_label",
+    group="run_id",
     smooth=smooth_amt,
     ax=ax_train,
+    palette=run_id_to_color,
 )
-ax_train.set_title("Training returns")
-ax_train.set_xlabel("Update step")
-ax_train.set_ylabel("Stepwise return")
-ax_train.legend()
 
-# Holdout plot (optional)
+ax_train.set_title("Training Returns")
+ax_train.set_xlabel("Update step")
+ax_train.set_ylabel("Train Return")
+
+# Plot holdout (if present)
 if holdout_res is not None:
     ax_holdout = axes[1]
     a_utils.gplot(
         holdout_res,
         x="update_idx",
         y="avg_return",
-        group="run_label",
+        group="run_id",
         smooth=smooth_amt,
         ax=ax_holdout,
+        palette=run_id_to_color,
     )
-    ax_holdout.set_title("Hold-out returns")
+    ax_holdout.set_title("Hold-out Returns")
     ax_holdout.set_xlabel("Update step")
-    ax_holdout.legend()
+    ax_holdout.set_ylabel("Holdout Return")
 
-# Evaluation plot
-ax_eval = axes[2] if holdout_res is not None else axes[1]
+# Plot evaluation
+col_idx = 2 if holdout_res is not None else 1
+ax_eval = axes[col_idx]
 a_utils.gplot(
     eval_res,
     x="update_idx",
     y="avg_return",
-    group="run_label",
+    group="run_id",
     smooth=smooth_amt,
     ax=ax_eval,
+    palette=run_id_to_color,
 )
-ax_eval.set_title("Ground-truth test returns")
+ax_eval.set_title("Test Returns")
 ax_eval.set_xlabel("Update step")
-ax_eval.legend()
+ax_eval.set_ylabel("Eval Return")
+
+# Draw vertical dashed lines at best holdout steps (if available)
+if holdout_res is not None:
+    for run_id in run_ids:
+        color = run_id_to_color.get(run_id, "gray")
+        this_best = best_idx[best_idx.run_id == run_id]["best_update"]
+        if not this_best.empty:
+            x0 = float(this_best.iloc[0])
+            for ax in (ax_train, ax_holdout, ax_eval):  # type: ignore
+                ax.axvline(x=x0, color=color, linestyle="--", linewidth=1)
+                # ax.text(
+                #     x0 + 1,
+                #     ax.get_ylim()[1] * 0.9,
+                #     # f"Run {run_id} best",
+                #     color=color,
+                #     fontsize=8,
+                #     rotation=90,
+                #     va="top",
+                #     ha="left",
+                # )
+
 
 plt.tight_layout()
 plt.savefig(
@@ -184,3 +229,81 @@ plt.savefig(
     ),
     bbox_inches="tight",
 )
+
+# # experimnetal i guess
+# fig, axes = plt.subplots(nrows=n_runs, ncols=ncols_all_curves, figsize=figsize)
+# fig.suptitle(f"{description} ({n_runs} total runs)", fontsize=14)
+
+# for i, run_id in enumerate(run_ids):
+#     subset_train = train_res[train_res.run_id == run_id]
+#     ax_train = axes[i, 0] if n_runs > 1 else axes[0]
+#     a_utils.gplot(
+#         subset_train,
+#         x="update_idx",
+#         y="avg_return",
+#         group="run_label",
+#         smooth=smooth_amt,
+#         ax=ax_train,
+#     )
+#     ax_train.set_title(f"Run {run_id} – Training")
+#     ax_train.set_xlabel("Update step")
+#     ax_train.set_ylabel("Train Return")
+
+#     if holdout_res is not None:
+#         ax_holdout = axes[i, 1] if n_runs > 1 else axes[1]
+#         subset_hold = holdout_res[holdout_res.run_id == run_id]
+#         a_utils.gplot(
+#             subset_hold,
+#             x="update_idx",
+#             y="avg_return",
+#             group="run_label",
+#             smooth=smooth_amt,
+#             ax=ax_holdout,
+#         )
+#         ax_holdout.set_title(f"Run {run_id} – Hold-out")
+#         ax_holdout.set_xlabel("Update step")
+#         ax_holdout.set_ylabel("Hold-out Return")
+
+#     col_idx = 2 if holdout_res is not None else 1
+#     ax_eval = axes[i, col_idx] if n_runs > 1 else axes[col_idx]
+#     subset_eval = eval_res[eval_res.run_id == run_id]
+#     a_utils.gplot(
+#         subset_eval,
+#         x="update_idx",
+#         y="avg_return",
+#         group="run_label",
+#         smooth=smooth_amt,
+#         ax=ax_eval,
+#     )
+#     ax_eval.set_title(f"Run {run_id} – Test")
+#     ax_eval.set_xlabel("Update step")
+#     ax_eval.set_ylabel("Eval Return")
+
+#     if holdout_res is not None:
+#         best_idx = holdout_res.loc[
+#             holdout_res.groupby("run_id")["avg_return"].idxmax()
+#         ][["run_id", "update_idx"]].rename(columns={"update_idx": "best_update"})
+#         this_best = best_idx[best_idx.run_id == run_id]["best_update"]
+#         if not this_best.empty:
+#             x0 = float(this_best.iloc[0])
+#             for ax in (ax_train, ax_holdout, ax_eval):  # type: ignore
+#                 ax.axvline(x=x0, color="gray", linestyle="--", linewidth=1)
+#                 ax.text(
+#                     x0 + 1,
+#                     ax.get_ylim()[1] * 0.9,
+#                     "best",
+#                     color="gray",
+#                     fontsize=8,
+#                     rotation=90,
+#                     va="top",
+#                     ha="left",
+#                 )
+
+# plt.tight_layout()
+# plt.savefig(
+#     os.path.join(
+#         figures_dir,
+#         f"rl_per_run_curves_{training_method}_{subset_to_oversight}.pdf",
+#     ),
+#     bbox_inches="tight",
+# )

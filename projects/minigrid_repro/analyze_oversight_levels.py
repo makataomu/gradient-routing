@@ -36,6 +36,25 @@ eval_files = glob.glob(os.path.join(experiment_dir, "eval_results*.csv"))
 eval_dfs = [pd.read_csv(file) for file in eval_files]
 eval_res = pd.concat(eval_dfs)
 
+# --- Load holdout to find each run's best update_idx (if present) ---
+holdout_files = glob.glob(os.path.join(experiment_dir, "holdout_results*.csv"))
+if holdout_files:
+    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files])
+    best_idx = (
+        holdout_res
+        .loc[holdout_res.groupby("run_id")["avg_return"].idxmax()]
+        [["run_id", "update_idx"]]
+        .rename(columns={"update_idx": "best_update"})
+    )
+    eval_res = eval_res.merge(best_idx, on="run_id", how="left")
+    eval_res = eval_res[
+        eval_res["best_update"].isna() | (eval_res["update_idx"] <= eval_res["best_update"])
+    ]
+    eval_res = eval_res.drop(columns=["best_update"])
+else:
+    holdout_res = None
+print("done.")
+
 a_utils.reindex_oracle(eval_res)
 
 # too close to 0.025 and 0.05; looks bad

@@ -234,7 +234,7 @@ if __name__ == "__main__":
             for iterate_idx, training_kwargs in enumerate(training_kwargs_list):
                 time.sleep(2)
 
-                if args.seeds is not None:
+                if len(args.seeds) > 0:
                     cli_seed = args.seeds[iterate_idx % len(args.seeds)]
                     unique_suffix = np.random.randint(0, 1000)
                     filename_id = cli_seed * 10000 + unique_suffix  # 70483

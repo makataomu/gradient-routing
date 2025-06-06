@@ -82,21 +82,24 @@ agg_fns = {
 
 
 # ─── Plotting routines ─────────────────────────────────────────────────────────
-def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1):
+def gplot(df, x: str, y: str, group: str, ax=None, smooth: int = 1, palette=None):
     """
     Plot one curve per `group` in df, with optional smoothing and CI bands.
     """
     if ax is None:
         ax = plt.gca()
 
+    groups = list(df[group].unique())
     for idx, (group_val, subset) in enumerate(df.groupby(group)):
         series = subset[y].rolling(smooth).mean() if smooth > 1 else subset[y]
-        color = colors[idx]
-        # color = preset_colors.get(group_val, f"C{idx}")
+        color = (
+            palette[group_val]
+            if palette and group_val in palette
+            else colors[idx % len(colors)]
+        )
         ls = preset_linestyles.get(group_val, "-")
 
         ax.plot(subset[x], series, label=group_val, color=color, ls=ls)
-        # very light band
         ax.fill_between(
             subset[x],
             series - ci_width(subset[y]),
