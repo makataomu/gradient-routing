@@ -170,6 +170,8 @@ ax_train.set_ylabel("Train Return")
 
 # Plot holdout (if present)
 if holdout_res is not None:
+    holdout_res = holdout_res[holdout_res.run_id.isin(run_ids)]
+
     ax_holdout = axes[1]
     a_utils.gplot(
         holdout_res,
