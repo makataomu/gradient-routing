@@ -14,6 +14,11 @@ except ImportError:
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+parser.add_argument(
+    "--combine",
+    action="store_true",
+    help="Add holdout oversight value from run_label to oversight_prob",
+)
 args = parser.parse_args()
 
 experiment_name = args.experiment_name
@@ -36,21 +41,43 @@ eval_files = glob.glob(os.path.join(experiment_dir, "eval_results*.csv"))
 eval_dfs = [pd.read_csv(file) for file in eval_files]
 eval_res = pd.concat(eval_dfs)
 
+# --- Optional oversight_prob augmentation ---
+if args.combine:
+
+    def parse_extra_oversight(run_label):
+        try:
+            suffix = run_label.split("_")[-1]
+            return float(suffix)
+        except Exception:
+            return 0.0  # fallback if malformed
+
+    eval_res["oversight_holdout"] = eval_res["run_label"].apply(parse_extra_oversight)
+    eval_res["oversight_prob"] += eval_res["oversight_holdout"]
+
+    # rename run_label to show the fraction holdout/total
+    def make_new_label(row):
+        base = row["run_label"].rsplit("_", 1)[0]  # remove numeric suffix
+        denom = row["oversight_prob"]
+        num = row["oversight_holdout"]
+        frac = round(num / denom, 1) if denom > 0 else 0.0
+        return f"{base}_{frac}_frac"
+
+    eval_res["run_label"] = eval_res.apply(make_new_label, axis=1)
+    eval_res.drop(columns=["oversight_holdout"], inplace=True)
+
 # --- Load holdout to find each run's best update_idx (if present) ---
 holdout_files = glob.glob(os.path.join(experiment_dir, "holdout_results*.csv"))
+
 if holdout_files:
-    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files])
-    best_idx = (
-        holdout_res
-        .loc[holdout_res.groupby("run_id")["avg_return"].idxmax()]
-        [["run_id", "update_idx"]]
-        .rename(columns={"update_idx": "best_update"})
+    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files], ignore_index=True)
+    best_idx = holdout_res.loc[
+        holdout_res.groupby("run_id")["avg_return"].idxmax(), ["run_id", "update_idx"]
+    ].rename(columns={"update_idx": "best_update"})
+    eval_res = (
+        eval_res.merge(best_idx, on="run_id", how="left")
+        .query("best_update.isna() or update_idx <= best_update")
+        .drop(columns=["best_update"])
     )
-    eval_res = eval_res.merge(best_idx, on="run_id", how="left")
-    eval_res = eval_res[
-        eval_res["best_update"].isna() | (eval_res["update_idx"] <= eval_res["best_update"])
-    ]
-    eval_res = eval_res.drop(columns=["best_update"])
 else:
     holdout_res = None
 print("done.")
@@ -83,11 +110,32 @@ final_steps = (
     .tail(1)
 )
 
-res = (
-    final_steps.groupby(["run_label", "oversight_prob"])
-    .agg({"avg_return": ["mean", a_utils.ci_width]})
-    .reset_index()
+final_steps = []
+
+for run_id, subset in eval_res.groupby("run_id"):
+    if holdout_res is not None and run_id in holdout_res.run_id.unique():
+        subset_holdout = holdout_res[holdout_res.run_id == run_id]
+        best_holdout_update_idx = subset_holdout.loc[
+            subset_holdout["avg_return"].idxmax()
+        ]["update_idx"]
+        print(
+            run_id,
+            best_holdout_update_idx,
+        )
+        subset = subset[subset["update_idx"] <= best_holdout_update_idx]
+    final_steps.append(subset)
+
+final_steps = pd.concat(final_steps)
+
+final_steps = (
+    eval_res.sort_values("update_idx")
+    .groupby(["run_label", "oversight_prob", "run_id"], as_index=False)
+    .tail(1)
 )
+
+means = final_steps.groupby("oversight_prob")["avg_return"].mean()
+print(means)
+
 
 fig, ax = plt.subplots(figsize=(4, 3))
 fontsize = 12

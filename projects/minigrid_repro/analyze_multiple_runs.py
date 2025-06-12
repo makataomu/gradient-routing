@@ -67,7 +67,7 @@ else:
 
 holdout_files = glob.glob(os.path.join(experiment_dir, "holdout_results*.csv"))
 if holdout_files:
-    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files])
+    holdout_res = pd.concat([pd.read_csv(f) for f in holdout_files], ignore_index=True)
     best_idx = holdout_res.loc[holdout_res.groupby("run_id")["avg_return"].idxmax()][
         ["run_id", "update_idx"]
     ].rename(columns={"update_idx": "best_update"})
@@ -78,7 +78,6 @@ else:
     ncols_all_curves = 2
 
 print("done.")
-
 
 is_routing = eval_res.run_label == "routing"
 is_diamond_policy = eval_res.policy_type == "diamond"
@@ -206,9 +205,14 @@ ax_eval.set_ylabel("Eval Return")
 if holdout_res is not None:
     for run_id in run_ids:
         color = run_id_to_color.get(run_id, "gray")
-        this_best = best_idx[best_idx.run_id == run_id]["best_update"]
-        if not this_best.empty:
-            x0 = float(this_best.iloc[0])
+        # this_best = best_idx[best_idx.run_id == run_id]["best_update"]
+        subset_holdout = holdout_res[holdout_res.run_id == run_id]
+        best_holdout_update_idx = subset_holdout.loc[
+            subset_holdout["avg_return"].idxmax()
+        ]["update_idx"]
+
+        if not subset_holdout.empty:
+            x0 = best_holdout_update_idx
             for ax in (ax_train, ax_holdout, ax_eval):  # type: ignore
                 ax.axvline(x=x0, color=color, linestyle="--", linewidth=1)
                 # ax.text(
