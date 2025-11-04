@@ -3,15 +3,11 @@ A companion repository for [Gradient Routing: Masking Gradients to Localize Comp
 
 
 ## Repo structure
-* `factored_representations` is for shared functionality, although in practice, code for different subprojects is mostly siloed
-    * `masklib.py` and `model_expansion.py` implement Expand, Route, Ablate for any [TransformerLens](https://transformerlensorg.github.io/TransformerLens/) model.
-    * Has some tests
 * `projects` contains the code to reproduce the results in the paper
-    * `minigrid` - localizing behavioral tendencies in a gridworld reinforcement learning agent
-    * `mnist` - splitting representations of an MNIST autoencoder
-    * `nanoGPT-factrep` - training a model with a steering scalar, and unlearning virology
-    * `tinystories` - unlearning a subset of [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories)
-* `shared_configs` is for commonly-used configurations, e.g. model definitions, standard training config options
+    * `minigrid_repro` - localizing behavioral tendencies in a gridworld reinforcement learning agent
+
+Contains experiments with Early Stopping. 
+Plots and more information - https://docs.google.com/presentation/d/1UMwnGKdVY3_sytJrz6ZMKd67p-jwfdg6vmkMzbrb17U/edit?usp=sharing
 
 ## To use
 
