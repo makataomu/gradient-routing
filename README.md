@@ -7,6 +7,7 @@ A companion repository for [Gradient Routing: Masking Gradients to Localize Comp
     * `minigrid_repro` - localizing behavioral tendencies in a gridworld reinforcement learning agent
 
 Contains experiments with Early Stopping. 
+Plots and more information - https://docs.google.com/presentation/d/1UMwnGKdVY3_sytJrz6ZMKd67p-jwfdg6vmkMzbrb17U/edit?usp=sharing
 
 ## To use
 
