@@ -101,25 +101,30 @@ class RoutedPolicyNetwork(PolicyNetwork):
     """
 
     def __init__(
-        self, obs_dim: int, num_actions: int, use_gate: bool, use_gradient_routing: bool
+        self,
+        obs_dim,
+        num_actions,
+        use_gate,
+        use_gradient_routing,
+        expert_hidden=(256, 256),
+        gate_hidden=(256, 256, 1),
     ):
         super().__init__()
         self.shared_input = nn.Sequential()
         self.ghost_expert = nn.Sequential(
             nn.Flatten(),
-            MLP([obs_dim, 256, 256], use_relu_on_output=True),
+            MLP([obs_dim, *expert_hidden[:-1], 256], use_relu_on_output=True),
         )
         self.diamond_expert = nn.Sequential(
             nn.Flatten(),
-            MLP([obs_dim, 256, 256], use_relu_on_output=True),
+            MLP([obs_dim, *expert_hidden[:-1], 256], use_relu_on_output=True),
         )
         self.shared_output = nn.Linear(256, num_actions)
-
         if use_gate:
             self.gating = nn.Sequential(
                 nn.Conv2d(4, 4, kernel_size=1, stride=1),
                 nn.Flatten(),
-                MLP([obs_dim, 256, 256, 1], use_relu_on_output=False),
+                MLP([obs_dim, *gate_hidden], use_relu_on_output=False),
             )
         else:
             self.gating = ConstantGate()
