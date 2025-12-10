@@ -25,10 +25,22 @@ colors = [
     (0.0902, 0.7451, 0.8118, 1.0),
 ]
 
+
+def none_or_float(value):
+    if value.lower() == "none":
+        return None
+    return float(value)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--exp_name", type=str, default="oversight_levels")
-parser.add_argument("--subset_to_oversight", type=float, default=0.01)
+parser.add_argument("--subset_to_oversight", type=none_or_float, default=0.01)
 parser.add_argument("--training_method", type=str, default="routing")
+parser.add_argument(
+    "--show_legend",
+    action="store_true",
+    help="If set, display legend in learning curve plot",
+)
 parser.add_argument("--label", type=str, default="")
 args = parser.parse_args()
 
@@ -104,7 +116,11 @@ fig, ax = plt.subplots(figsize=(4, 3))
 fontsize = 12
 ax.set_xlabel("Update step", fontsize=fontsize)
 ax.set_ylabel("Ground truth return", fontsize=fontsize)
-oversight_percent = subset_to_oversight * 100
+
+oversight_percent = "all"
+if subset_to_oversight:
+    oversight_percent = subset_to_oversight * 100
+
 ax.set_title(
     f"Learning curves at {oversight_percent}% oversight", fontsize=fontsize + 1
 )
@@ -120,7 +136,9 @@ for i, run_label in enumerate(eval_res.run_label.unique()):
         label=run_label,
         color=colors[i],
     )
+
 ax.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", fontsize=fontsize - 1)
+
 ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
 plt.savefig(
     os.path.join(
@@ -226,8 +244,45 @@ if holdout_res is not None:
                 #     ha="left",
                 # )
 
+rect = None
+if args.show_legend:
 
-plt.tight_layout()
+    def make_new_label(row):
+        base = row["run_label"].rsplit("_", 1)[0]
+        denom = row["oversight_prob"]
+        num = float(row["run_label"].split("_")[-1])
+        frac = round(num / denom, 1) if denom > 0 else 0.0
+        return f"{base} {frac} frac"
+
+    handles, labels = ax_eval.get_legend_handles_labels()
+
+    # Map: run_id -> "run_id 0.8 frac"
+    label_map = {}
+    for run_id in labels:
+        row = eval_res[eval_res.run_id == int(run_id)].iloc[0]
+        try:
+            oversight_holdout = float(row["run_label"].split("_")[-1])
+        except Exception:
+            oversight_holdout = 0.0
+        oversight_prob = row["oversight_prob"] + oversight_holdout
+        frac = (
+            round(oversight_holdout / oversight_prob, 1) if oversight_prob > 0 else 0.0
+        )
+        label_map[run_id] = f"{run_id} {frac} frac"
+
+    formatted_labels = [label_map.get(label, label) for label in labels]
+
+    fig.legend(
+        handles,
+        formatted_labels,
+        loc="center right",
+        bbox_to_anchor=(1.01, 0.5),
+        frameon=False,
+        fontsize=6,
+    )
+    rect = (0, 0, 0.9, 1)
+
+plt.tight_layout(rect=rect)
 plt.savefig(
     os.path.join(
         figures_dir,

@@ -13,7 +13,7 @@ except ImportError:
     import analysis_utils as a_utils
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--experiment_name", type=str, default="oversight_levels")
+parser.add_argument("--exp_name", type=str, default="oversight_levels")
 parser.add_argument(
     "--combine",
     action="store_true",
@@ -21,7 +21,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-experiment_name = args.experiment_name
+experiment_name = args.exp_name
 
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(parent_dir, "data")
@@ -134,7 +134,7 @@ final_steps = (
 )
 
 means = final_steps.groupby("oversight_prob")["avg_return"].mean()
-print(means)
+# print(means)
 
 
 fig, ax = plt.subplots(figsize=(4, 3))
