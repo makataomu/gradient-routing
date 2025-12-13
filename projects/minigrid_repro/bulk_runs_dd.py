@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num_steps", type=int, default=20_000, help="num_learning_updates")
     p.add_argument("--steps_per_learning_update", type=int, default=32)
     p.add_argument("--discount", type=float, default=0.97)
-    p.add_argument("--eval_freq", type=int, default=100)
+    p.add_argument("--eval_freq", type=int, default=10)
     p.add_argument("--policy_log_freq", type=int, default=200)
 
     p.add_argument(
@@ -88,17 +88,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--learning_rate", type=float, default=5e-5)
     p.add_argument("--expert_weight_decay", type=float, default=0.0)
     p.add_argument("--shared_weight_decay", type=float, default=0.0)
+    p.add_argument("--exp_name", type=str, default="double_descent_depth")
 
     p.add_argument(
         "--save_dir",
         type=str,
-        default=str(PROJECT_DIR / "data" / "double_descent_depth"),
+        default="",
+        # default=str(PROJECT_DIR / "data" / p.exp_name),
         help="Where train() writes CSV outputs.",
     )
     p.add_argument(
         "--fig_dir",
         type=str,
-        default=str(PROJECT_DIR / "figures" / "double_descent_depth"),
+        default="",
+        # default=str(PROJECT_DIR / "figures" / p.exp_name),
         help="Where train() writes policy visualizations.",
     )
 
@@ -145,6 +148,15 @@ def make_policy_ctor(
         return routed.get_diamond_policy()
 
     return ctor
+
+
+import hashlib
+
+
+def make_run_id(exp_name: str, run_label: str, oversight_prob: float, seed: int) -> int:
+    s = f"{exp_name}|{run_label}|ovs={oversight_prob}|seed={seed}"
+    h = hashlib.sha1(s.encode("utf-8")).hexdigest()[:12]  # 48 bits
+    return int(h, 16)
 
 
 def algo_settings_by_run_type() -> Dict[str, Dict]:
@@ -244,7 +256,9 @@ def build_runs(args: argparse.Namespace) -> List[Dict]:
                         save_dir=args.save_dir,
                         policy_visualization_dir=args.fig_dir,
                         run_label=base_label,
-                        run_id=seed,  # unique ID
+                        run_id=make_run_id(
+                            args.exp_name, base_label, ovs, seed
+                        ),  # unique ID
                         device=device,
                         regulariser_name=None,
                         regulariser_kwargs=None,
@@ -258,6 +272,9 @@ def build_runs(args: argparse.Namespace) -> List[Dict]:
 
 def main() -> None:
     args = parse_args()
+
+    args.save_dir = str(PROJECT_DIR / "data" / args.exp_name)
+    args.fig_dir = str(PROJECT_DIR / "figures" / args.exp_name)
 
     Path(args.save_dir).mkdir(parents=True, exist_ok=True)
     Path(args.fig_dir).mkdir(parents=True, exist_ok=True)

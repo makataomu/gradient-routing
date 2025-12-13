@@ -91,6 +91,11 @@ else:
 
 print("done.")
 
+train_res["run_id"] = train_res["run_id"].astype(str)
+eval_res["run_id"] = eval_res["run_id"].astype(str)
+if holdout_files:
+    holdout_res["run_id"] = holdout_res["run_id"].astype(str)
+
 is_routing = eval_res.run_label == "routing"
 is_diamond_policy = eval_res.policy_type == "diamond"
 eval_res = eval_res[(is_routing & is_diamond_policy) | ~is_routing]
@@ -259,7 +264,7 @@ if args.show_legend:
     # Map: run_id -> "run_id 0.8 frac"
     label_map = {}
     for run_id in labels:
-        row = eval_res[eval_res.run_id == int(run_id)].iloc[0]
+        row = eval_res[eval_res.run_id == run_id].iloc[0]
         try:
             oversight_holdout = float(row["run_label"].split("_")[-1])
         except Exception:
