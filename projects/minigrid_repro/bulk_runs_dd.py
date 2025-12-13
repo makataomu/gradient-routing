@@ -29,9 +29,28 @@ from typing import Callable, Dict, List
 
 import torch
 
-# Relative imports: this file should live next to bulk_runs.py.
-from . import agents, training
-from . import bulk_runs as base_bulk  # reuse algorithm_settings_by_run_type, env_kwargs
+import argparse
+import glob
+import inspect
+import json
+import math
+import os
+import time
+from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from copy import deepcopy
+from functools import partial
+
+import numpy as np
+
+try:
+    import projects.minigrid_repro.agents as agents
+    import projects.minigrid_repro.training as training
+except ImportError:
+    import agents as agents
+    import training as training
+
+from factored_representations.utils import Timer
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
