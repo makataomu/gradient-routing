@@ -150,15 +150,6 @@ def make_policy_ctor(
     return ctor
 
 
-import hashlib
-
-
-def make_run_id(exp_name: str, run_label: str, oversight_prob: float, seed: int) -> int:
-    s = f"{exp_name}|{run_label}|ovs={oversight_prob}|seed={seed}"
-    h = hashlib.sha1(s.encode("utf-8")).hexdigest()[:12]  # 48 bits
-    return int(h, 16)
-
-
 def algo_settings_by_run_type() -> Dict[str, Dict]:
     """
     Minimal mapping: which reward + loss to use per run_type.
@@ -256,9 +247,7 @@ def build_runs(args: argparse.Namespace) -> List[Dict]:
                         save_dir=args.save_dir,
                         policy_visualization_dir=args.fig_dir,
                         run_label=base_label,
-                        run_id=make_run_id(
-                            args.exp_name, base_label, ovs, seed
-                        ),  # unique ID
+                        run_id=f"{run_type}_d{depth}_ovs{ovs}_seed{seed}",  # unique ID
                         device=device,
                         regulariser_name=None,
                         regulariser_kwargs=None,
