@@ -35,7 +35,6 @@ try:
     import projects.minigrid_repro.training as training
 except ImportError:
     import agents as agents
-    import bulk_runs as base_bulk
     import training as training
 
 
@@ -245,6 +244,9 @@ def make_policy_ctor(
     return ctor
 
 
+from functools import partial
+
+
 def build_training_kwargs_list(args: argparse.Namespace) -> List[Dict]:
     """
     Build a list of kwargs dicts to feed into training.train(**kwargs).
@@ -256,8 +258,47 @@ def build_training_kwargs_list(args: argparse.Namespace) -> List[Dict]:
       - run_type_score
     and we override only the policy_network_constructor + some training hyperparams.
     """
-    algo_settings = base_bulk.algorithm_settings_by_run_type
-    base_env_kwargs = deepcopy(base_bulk.env_kwargs)
+    num_envs = 512
+    base_env_kwargs = dict(
+        n_envs=num_envs,
+        nrows=5,
+        ncols=5,
+        max_step=32,
+        oversight_prob=None,
+        spurious_oversight_prob=0,
+    )
+
+    algo_settings = {
+        "routing": dict(
+            policy_network_constructor=partial(
+                agents.RoutedPolicyNetwork, use_gate=True, use_gradient_routing=True
+            ),
+            reward_fn_to_train_on=training.moe_reward_fn,
+            loss_getter_fn=agents.get_routed_reinforce_loss,
+        ),
+        "no_routing_control": dict(
+            policy_network_constructor=partial(
+                agents.RoutedPolicyNetwork, use_gate=True, use_gradient_routing=False
+            ),
+            reward_fn_to_train_on=training.moe_reward_fn,
+            loss_getter_fn=agents.get_routed_reinforce_loss,
+        ),
+        "naive_outcomes": dict(
+            policy_network_constructor=agents.get_single_expert_policy,
+            reward_fn_to_train_on=training.naive_reward_fn,
+            loss_getter_fn=agents.get_reinforce_loss,
+        ),
+        "filtering": dict(
+            policy_network_constructor=agents.get_single_expert_policy,
+            reward_fn_to_train_on=training.true_reward_fn,
+            loss_getter_fn=agents.get_filtered_reinforce_loss,
+        ),
+        "oracle": dict(
+            policy_network_constructor=agents.get_single_expert_policy,
+            reward_fn_to_train_on=training.true_reward_fn,
+            loss_getter_fn=agents.get_reinforce_loss,
+        ),
+    }
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
