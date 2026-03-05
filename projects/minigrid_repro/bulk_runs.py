@@ -237,12 +237,12 @@ if __name__ == "__main__":
                 if len(args.seeds) > 0:
                     cli_seed = args.seeds[iterate_idx % len(args.seeds)]
                     unique_suffix = np.random.randint(0, 1000)
-                    filename_id = cli_seed * 10000 + unique_suffix  # 70483
+                    filename_id = cli_seed * 10000 + unique_suffix  # eg 70483
                     training_kwargs.update(
                         {
                             "run_id": filename_id,
-                            "random_seed": False,
-                            "default_seed": cli_seed,
+                            "randomize_seeds": False,
+                            "random_seed": cli_seed,
                         }
                     )
 

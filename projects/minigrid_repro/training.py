@@ -248,8 +248,8 @@ def train(
     time_to_sleep_after_run: float = 0,
     regulariser_name: Optional[str] = None,
     regulariser_kwargs: Optional[dict] = None,
-    random_seed: bool = True,  # for reproducibility
-    default_seed: int = 42,
+    randomize_seeds: bool = True,  # for reproducibility
+    random_seed: int = 42,
 ):
     """
     Trains a policy.  If `regulariser_name=="earlystop"`, we reserve a fixed
@@ -262,8 +262,8 @@ def train(
     # ─── seed & device ────────────────────────────────────────────────────────
     run_id = run_id or np.random.choice(1_000_000)
 
-    seed = default_seed
-    if random_seed:
+    seed = random_seed
+    if randomize_seeds:
         seed = int(time.time()) + os.getpid() + np.random.choice(1_000_000)
 
     np.random.seed(seed)
